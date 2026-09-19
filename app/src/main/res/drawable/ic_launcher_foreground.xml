@@ -1,0 +1,25 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Golden Shield Badge -->
+    <path
+        android:fillColor="#F4B400"
+        android:pathData="M54,24 L76,33 C76,55 67,69 54,78 C41,69 32,55 32,33 Z" />
+    
+    <!-- Inner Dark Forest Inset -->
+    <path
+        android:fillColor="#1B4D3E"
+        android:pathData="M54,28 L72,36 C72,53 64,65 54,73 C44,65 36,53 36,36 Z" />
+    
+    <!-- Ledger Book Icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M44,40 C42.9,40 42,40.9 42,42 L42,62 C42,63.1 42.9,64 44,64 L64,64 C65.1,64 66,63.1 66,62 L66,42 C66,40.9 65.1,40 64,40 L44,40 Z M46,44 L62,44 L62,47 L46,47 Z M46,50 L58,50 L58,53 L46,53 Z M46,56 L62,56 L62,59 L46,59 Z" />
+
+    <!-- Gold Accent Star / Hash Link node -->
+    <path
+        android:fillColor="#FFD54F"
+        android:pathData="M54,34 L55.5,37.5 L59,38 L56.3,40.3 L57.1,44 L54,42 L50.9,44 L51.7,40.3 L49,38 L52.5,37.5 Z" />
+</vector>

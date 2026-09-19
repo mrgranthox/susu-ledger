@@ -1,0 +1,6 @@
+{
+  "name": "Susu Ledger",
+  "description": "Ghana Susu savings management with cryptographic SHA-256 double-entry ledger, WhatsApp bot pairing, and MoMo collections.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
