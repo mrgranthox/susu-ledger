@@ -4,7 +4,12 @@ const { handleIncomingWhatsAppMessage } = require('../services/stateMachine');
 const { handlePaystackWebhook } = require('../services/paystackService');
 require('dotenv').config();
 
-const VERIFY_TOKEN = process.env.META_WEBHOOK_VERIFY_TOKEN || 'susu_webhook_secret_token_2026';
+const VERIFY_TOKENS = [
+  process.env.META_WEBHOOK_VERIFY_TOKEN,
+  process.env.WHATSAPP_VERIFY_TOKEN,
+  'susu_webhook_token_2026',
+  'susu_webhook_secret_token_2026'
+].filter(Boolean);
 
 // 1. Meta WhatsApp Webhook Verification (GET)
 router.get('/whatsapp', (req, res) => {
@@ -13,14 +18,15 @@ router.get('/whatsapp', (req, res) => {
   const challenge = req.query['hub.challenge'];
 
   if (mode && token) {
-    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-      console.log('[Meta Webhook] Verified successfully');
-      res.status(200).send(challenge);
+    if (mode === 'subscribe' && VERIFY_TOKENS.includes(token)) {
+      console.log('[Meta Webhook] Verified successfully with token:', token);
+      return res.status(200).send(challenge);
     } else {
-      res.sendStatus(403);
+      console.warn('[Meta Webhook] Token mismatch. Received:', token, 'Expected one of:', VERIFY_TOKENS);
+      return res.sendStatus(403);
     }
   } else {
-    res.sendStatus(400);
+    return res.sendStatus(400);
   }
 });
 
