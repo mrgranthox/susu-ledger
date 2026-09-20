@@ -1656,11 +1656,10 @@ private fun Step7ConnectBot(
           horizontalAlignment = Alignment.CenterHorizontally
         ) {
           Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("SusuLedger Verified WhatsApp Bot", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimary)
+            Text("SusuLedger Verified WhatsApp Bot Gateway", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimary)
             Spacer(modifier = Modifier.width(6.dp))
             Icon(Icons.Default.CheckCircle, contentDescription = "Verified", tint = ForestGreenPrimary, modifier = Modifier.size(16.dp))
           }
-          Text("+233 24 000 7878", fontSize = 12.sp, color = TextSecondary)
 
           Spacer(modifier = Modifier.height(12.dp))
 
