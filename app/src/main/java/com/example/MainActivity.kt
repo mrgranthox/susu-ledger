@@ -19,10 +19,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -103,6 +103,7 @@ class MainActivity : ComponentActivity() {
         val unsyncedPaymentsCount by viewModel.unsyncedPaymentsCount.collectAsState()
         val botPairingCode by viewModel.botPairingCode.collectAsState()
         val isBotConnected by viewModel.isBotConnected.collectAsState()
+        val cloudStatus by viewModel.cloudStatus.collectAsState()
 
         val showPaymentSheet by viewModel.showPaymentSheet.collectAsState()
         val selectedMemberForPayment by viewModel.selectedMemberForPayment.collectAsState()
@@ -225,6 +226,7 @@ class MainActivity : ComponentActivity() {
               else -> {
                 // App-First Clean Slate Onboarding Flow
                 OnboardingFlowScreen(
+                  pairingCode = pairingCode,
                   onCompleteOnboarding = { groupName, amount, treasurerPhone, treasurerName, initialMembers, treasurerPin ->
                     val memberPairs = initialMembers.map { it.name to it.phone }
                     viewModel.completeOnboarding(
@@ -308,9 +310,13 @@ class MainActivity : ComponentActivity() {
                   groupName = currentGroupName,
                   messages = messages,
                   members = members,
+                  pairingCode = pairingCode,
+                  cloudStatus = cloudStatus,
                   onBack = { showWhatsAppSimulator = false },
-                  onSendMessage = { phone, msg -> viewModel.simulateMemberWhatsAppMessage(phone, msg) },
+                  onSendMessage = { phone, msg -> viewModel.sendLiveWhatsAppMessage(phone, msg) },
                   onOpenPairing = { viewModel.showPairingSheet(true) },
+                  onRefreshPairingCode = { viewModel.refreshPairingCode() },
+                  onCheckCloudStatus = { viewModel.checkCloudSystemStatus() },
                   onSendWeeklyReminder = { viewModel.sendWeeklyCollectionReminder() },
                   onSendUnpaidNudges = { viewModel.sendTargetedUnpaidNudges() },
                   onSendSundayDigest = { viewModel.sendSundaySummaryDigest() }
@@ -383,7 +389,7 @@ class MainActivity : ComponentActivity() {
                             onClick = { currentNavIndex = 2 },
                             icon = {
                               Icon(
-                                imageVector = Icons.Default.ReceiptLong,
+                                imageVector = Icons.AutoMirrored.Filled.ReceiptLong,
                                 contentDescription = "History",
                                 tint = if (currentNavIndex == 2) ForestGreenPrimary else LineIconGrey
                               )
@@ -439,7 +445,7 @@ class MainActivity : ComponentActivity() {
                         recentPayments = payments,
                         unsyncedCount = unsyncedPaymentsCount,
                         isSyncing = isSyncing,
-                        botPairingCode = botPairingCode,
+                        botPairingCode = pairingCode,
                         isBotConnected = isBotConnected,
                         onSyncClick = { viewModel.syncWithCloud() },
                         onSelectGroup = { viewModel.selectGroup(it) },
@@ -562,7 +568,8 @@ class MainActivity : ComponentActivity() {
                 sheetState = sheetState,
                 pairingCode = pairingCode,
                 secondsRemaining = pairingSecondsRemaining,
-                onDismiss = { viewModel.showPairingSheet(false) }
+                onDismiss = { viewModel.showPairingSheet(false) },
+                onGenerateNewCode = { viewModel.generateNewPairingCode() }
               )
             }
 

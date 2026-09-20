@@ -1,4 +1,5 @@
 const { db } = require('../config/database');
+const cacheService = require('../config/redis');
 const { sendWhatsAppInteractiveMessage, sendWhatsAppTextMessage } = require('./whatsappService');
 
 async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPayload) {
@@ -35,6 +36,40 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
 
   const identityId = identity ? identity.id : null;
   const cleanText = (messageBody || '').trim().toUpperCase();
+
+  // Dynamic Bot Pairing Command: PAIR:XXXX-XX or PAIR XXXX-XX
+  if (cleanText.startsWith('PAIR:') || cleanText.startsWith('PAIR ')) {
+    const rawCode = cleanText.replace('PAIR:', '').replace('PAIR', '').trim();
+    if (rawCode) {
+      const pairSession = await cacheService.get(`pair:${rawCode}`);
+      if (pairSession) {
+        // Mark session paired
+        pairSession.status = 'PAIRED';
+        pairSession.pairedPhone = formattedPhone;
+        pairSession.pairedAt = new Date().toISOString();
+        await cacheService.set(`pair:${rawCode}`, pairSession, 900);
+
+        await sendWhatsAppTextMessage(
+          fromPhone,
+          `✅ *SusuLedger Instance Paired Successfully!*\n\n` +
+          `• Device: Mobile App Instance\n` +
+          `• Pairing Code: *${rawCode}*\n` +
+          `• Phone: *${formattedPhone}*\n` +
+          `• Timestamp: ${new Date().toLocaleTimeString()}\n\n` +
+          `Your SusuLedger app is now connected to Cloud Run WhatsApp Bot Engine!`,
+          identityId
+        );
+        return;
+      } else {
+        await sendWhatsAppTextMessage(
+          fromPhone,
+          `⚠️ *Pairing Code Expired or Not Found*\nCode *${rawCode}* is invalid or past its 15-minute validity window. Please tap 'Generate New Code' in your mobile app.`,
+          identityId
+        );
+        return;
+      }
+    }
+  }
 
   // 2. Handle WhatsApp Interactive Buttons & Commands
   if (cleanText === 'PAID' || buttonPayload === 'CLAIM_PAID') {

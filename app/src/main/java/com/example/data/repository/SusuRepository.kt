@@ -1052,7 +1052,21 @@ class SusuRepository(private val dao: SusuDao) {
     return group
   }
 
+  suspend fun logOutboundMessage(phone: String, body: String, metaStatus: String = "delivered") {
+    dao.insertMessage(
+      MessageLogEntity(
+        phone = phone,
+        senderName = "SusuBot Cloud Run",
+        direction = "OUT",
+        body = body,
+        metaStatus = metaStatus
+      )
+    )
+  }
+
   suspend fun getUserById(userId: String): UserEntity? = dao.getUserById(userId)
+
+  suspend fun insertUser(user: UserEntity) = dao.insertUser(user)
 
   suspend fun getGroupByTreasurer(treasurerId: String): GroupEntity? = dao.getGroupByTreasurer(treasurerId)
 

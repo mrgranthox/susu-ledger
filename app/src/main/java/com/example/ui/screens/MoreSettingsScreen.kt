@@ -23,8 +23,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteForever
@@ -238,7 +238,7 @@ fun MoreSettingsScreen(
           border = BorderStroke(1.dp, ForestGreenPrimary.copy(alpha = 0.5f)),
           colors = ButtonDefaults.outlinedButtonColors(containerColor = ForestGreenLightFill)
         ) {
-          Icon(Icons.Default.Chat, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp))
+          Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp))
           Spacer(modifier = Modifier.width(8.dp))
           Text("WhatsApp Bot Pairing (Connect Members)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
         }

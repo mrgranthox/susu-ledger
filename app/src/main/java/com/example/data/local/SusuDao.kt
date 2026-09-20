@@ -33,6 +33,9 @@ interface SusuDao {
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertUser(user: UserEntity)
 
+  @Insert(onConflict = OnConflictStrategy.REPLACE)
+  suspend fun insertUsers(users: List<UserEntity>)
+
   // 2. Groups
   @Query("SELECT * FROM groups ORDER BY created_at ASC")
   fun getAllGroups(): Flow<List<GroupEntity>>

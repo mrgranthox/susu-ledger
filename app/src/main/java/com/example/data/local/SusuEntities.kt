@@ -39,15 +39,7 @@ data class IdentityEntity(
  * References identities(id) on delete cascade.
  */
 @Entity(
-  tableName = "users",
-  foreignKeys = [
-    ForeignKey(
-      entity = IdentityEntity::class,
-      parentColumns = ["id"],
-      childColumns = ["id"],
-      onDelete = ForeignKey.CASCADE
-    )
-  ]
+  tableName = "users"
 )
 data class UserEntity(
   @PrimaryKey

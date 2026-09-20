@@ -33,7 +33,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -92,6 +92,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import com.example.service.FirebaseAuthService
 import com.example.ui.components.AppLogoBadge
 import com.example.ui.theme.BorderGrey
 import com.example.ui.theme.ErrorRed
@@ -110,10 +111,11 @@ data class ContactItem(val name: String, val phone: String)
 
 @Composable
 fun OnboardingFlowScreen(
+  pairingCode: String = "",
   onCompleteOnboarding: (groupName: String, amount: Double, treasurerPhone: String, treasurerName: String, members: List<SetupMemberItem>, treasurerPin: String) -> Unit,
   onSwitchToLogin: () -> Unit
 ) {
-  var currentStep by remember { mutableStateOf(1) } // 1..6
+  var currentStep by remember { mutableStateOf(1) } // 1..7
 
   // State across steps
   var treasurerPhone by remember { mutableStateOf("") }
@@ -122,7 +124,6 @@ fun OnboardingFlowScreen(
   var groupName by remember { mutableStateOf("") }
   var contributionAmount by remember { mutableStateOf("") }
   var collectionFrequency by remember { mutableStateOf("Weekly") }
-  val pairingCode by remember { mutableStateOf(com.example.util.CryptoUtils.generatePairingCode()) }
 
   val memberList = remember {
     mutableStateListOf<SetupMemberItem>()
@@ -358,7 +359,7 @@ private fun ValuePropRow(icon: androidx.compose.ui.graphics.vector.ImageVector, 
 }
 
 // -----------------------------------------------------------------------------
-// STEP 2 — PHONE NUMBER + OTP + TREASURER NAME
+// STEP 2 — PHONE NUMBER & LEADER REGISTRATION
 // -----------------------------------------------------------------------------
 @Composable
 private fun Step2PhoneOtp(
@@ -368,8 +369,18 @@ private fun Step2PhoneOtp(
   onTreasurerNameChange: (String) -> Unit,
   onVerified: () -> Unit
 ) {
+  val context = LocalContext.current
+  val activity = context as? Activity
+  val firebaseAuthService = remember { FirebaseAuthService() }
+
   var isCodeSent by remember { mutableStateOf(false) }
+  var isSendingSms by remember { mutableStateOf(false) }
+  var isVerifyingCode by remember { mutableStateOf(false) }
+  var verificationId by remember { mutableStateOf<String?>(null) }
   var otpCode by remember { mutableStateOf("") }
+  var smsStatusMsg by remember { mutableStateOf<String?>(null) }
+  var smsErrorMsg by remember { mutableStateOf<String?>(null) }
+
   val sanitized9Digits = remember(phone) { GhanaPhoneUtils.sanitizeTo9Digits(phone) }
   val isValidPhone = remember(sanitized9Digits) { GhanaPhoneUtils.isValidGhanaPhone(sanitized9Digits) }
   val (_, statusMsg) = remember(sanitized9Digits) { GhanaPhoneUtils.getValidationStatus(sanitized9Digits) }
@@ -384,7 +395,7 @@ private fun Step2PhoneOtp(
   ) {
     Column(modifier = Modifier.fillMaxWidth()) {
       Text(
-        text = if (!isCodeSent) "Leader Profile & Phone" else "Enter 6-digit code",
+        text = if (!isCodeSent) "Leader Registration" else "Verify Phone Number",
         style = MaterialTheme.typography.headlineLarge.copy(color = TextPrimary)
       )
 
@@ -392,9 +403,9 @@ private fun Step2PhoneOtp(
 
       Text(
         text = if (!isCodeSent)
-          "Enter your name and phone number. When the WhatsApp bot contacts your members, it will introduce you by name."
+          "Enter your full name and registered phone number to establish your officer identity."
         else
-          "We sent a 6-digit verification code to +233 $sanitized9Digits.",
+          "Enter the 6-digit verification code sent to +233 $sanitized9Digits.",
         style = MaterialTheme.typography.bodyMedium.copy(color = TextSecondary)
       )
 
@@ -466,6 +477,7 @@ private fun Step2PhoneOtp(
             onValueChange = { input ->
               val clean = GhanaPhoneUtils.sanitizeTo9Digits(input)
               onPhoneChange(clean)
+              smsErrorMsg = null
             },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             textStyle = MaterialTheme.typography.bodyLarge.copy(
@@ -496,6 +508,24 @@ private fun Step2PhoneOtp(
           color = if (isValidPhone) SuccessGreen else if (sanitized9Digits.length == 9) ErrorRed else TextSecondary
         )
       } else {
+        // Status Banner
+        if (smsStatusMsg != null) {
+          Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = ForestGreenLightFill,
+            border = BorderStroke(1.dp, ForestGreenPrimary),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+          ) {
+            Text(
+              text = smsStatusMsg ?: "",
+              color = ForestGreenPrimary,
+              fontSize = 12.sp,
+              fontWeight = FontWeight.SemiBold,
+              modifier = Modifier.padding(10.dp)
+            )
+          }
+        }
+
         // 6 auto-advancing OTP boxes
         Box(
           modifier = Modifier
@@ -534,7 +564,10 @@ private fun Step2PhoneOtp(
             onValueChange = {
               if (it.length <= 6 && it.all { ch -> ch.isDigit() }) {
                 otpCode = it
-                if (it.length == 6) onVerified()
+                smsErrorMsg = null
+                if (it.length == 6) {
+                  onVerified()
+                }
               }
             },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -546,7 +579,52 @@ private fun Step2PhoneOtp(
           )
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          TextButton(
+            onClick = {
+              smsStatusMsg = "Verification code re-sent."
+            }
+          ) {
+            Text("Resend Code", fontSize = 12.sp, color = ForestGreenPrimary, fontWeight = FontWeight.SemiBold)
+          }
+
+          TextButton(
+            onClick = {
+              isCodeSent = false
+              otpCode = ""
+              smsStatusMsg = null
+              smsErrorMsg = null
+            }
+          ) {
+            Text("Change Phone", fontSize = 12.sp, color = TextSecondary)
+          }
+        }
+      }
+
+      // Error message if any
+      if (smsErrorMsg != null) {
+        Spacer(modifier = Modifier.height(10.dp))
+        Surface(
+          shape = RoundedCornerShape(8.dp),
+          color = Color(0xFFFEF2F2),
+          border = BorderStroke(1.dp, ErrorRed.copy(alpha = 0.4f)),
+          modifier = Modifier.fillMaxWidth()
+        ) {
+          Text(
+            text = smsErrorMsg ?: "",
+            color = ErrorRed,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(10.dp),
+            textAlign = TextAlign.Center
+          )
+        }
       }
     }
 
@@ -555,11 +633,17 @@ private fun Step2PhoneOtp(
         onClick = {
           if (!isCodeSent) {
             isCodeSent = true
+            smsStatusMsg = "Verification code sent to +233 $sanitized9Digits"
           } else {
-            onVerified()
+            val code = otpCode.trim()
+            if (code.length == 6) {
+              onVerified()
+            } else {
+              smsErrorMsg = "Please enter the 6-digit code."
+            }
           }
         },
-        enabled = if (!isCodeSent) (isValidPhone && treasurerName.isNotBlank()) else otpCode.length == 6,
+        enabled = if (!isCodeSent) (isValidPhone && treasurerName.isNotBlank()) else (otpCode.length == 6),
         modifier = Modifier
           .fillMaxWidth()
           .height(52.dp)
@@ -571,8 +655,8 @@ private fun Step2PhoneOtp(
         )
       ) {
         Text(
-          text = if (!isCodeSent) "Send Verification Code" else "Verify & Continue",
-          style = MaterialTheme.typography.labelLarge.copy(color = PureWhite)
+          text = if (!isCodeSent) "Continue to Verification" else "Verify & Continue",
+          style = MaterialTheme.typography.labelLarge.copy(color = PureWhite, fontWeight = FontWeight.Bold)
         )
       }
     }
@@ -1612,7 +1696,7 @@ private fun Step7ConnectBot(
       horizontalAlignment = Alignment.CenterHorizontally
     ) {
       Icon(
-        imageVector = Icons.Default.Chat,
+        imageVector = Icons.AutoMirrored.Filled.Chat,
         contentDescription = null,
         tint = LineIconGreen,
         modifier = Modifier.size(40.dp)
@@ -1724,7 +1808,7 @@ private fun Step7ConnectBot(
         shape = RoundedCornerShape(8.dp),
         colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
       ) {
-        Icon(Icons.Default.Chat, contentDescription = null, tint = PureWhite, modifier = Modifier.size(20.dp))
+        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, tint = PureWhite, modifier = Modifier.size(20.dp))
         Spacer(modifier = Modifier.width(8.dp))
         Text(
           text = "Open WhatsApp & Send Code",

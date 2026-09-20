@@ -21,8 +21,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Lock
@@ -88,7 +88,7 @@ fun FeatureWalkthroughScreen(
       title = "Group-Specific WhatsApp Bot",
       subtitle = "Isolated Context for Each Savings Group",
       description = "Every Susu savings group has dedicated WhatsApp intelligence. When members like Akosua ask for dues, the bot knows their exact group, weekly rate, and paid status.",
-      icon = Icons.Default.Chat,
+      icon = Icons.AutoMirrored.Filled.Chat,
       accentColor = Color(0xFF25D366),
       previewBadge = "WhatsApp Meta Cloud API",
       highlights = listOf(

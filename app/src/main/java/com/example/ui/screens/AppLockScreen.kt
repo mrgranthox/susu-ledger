@@ -20,11 +20,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Backspace
+import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -206,7 +206,7 @@ fun AppLockScreen(
           onClick = onSignOut,
           modifier = Modifier.testTag("lock_screen_sign_out_btn")
         ) {
-          Icon(Icons.Default.Logout, contentDescription = "Sign Out", tint = LineIconGrey, modifier = Modifier.size(16.dp))
+          Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Sign Out", tint = LineIconGrey, modifier = Modifier.size(16.dp))
           Spacer(modifier = Modifier.width(4.dp))
           Text("Sign Out", color = TextSecondary, fontSize = 12.sp)
         }
@@ -352,7 +352,7 @@ fun AppLockScreen(
             .height(40.dp)
             .testTag("lock_screen_bottom_sign_out_btn")
         ) {
-          Icon(Icons.Default.Logout, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(16.dp))
+          Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(16.dp))
           Spacer(modifier = Modifier.width(6.dp))
           Text("Sign Out / Switch Account", color = Color(0xFFDC2626), fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
         }
@@ -397,7 +397,7 @@ private fun LockNumericKeypad(
               contentAlignment = Alignment.Center
             ) {
               Icon(
-                imageVector = Icons.Default.Backspace,
+                imageVector = Icons.AutoMirrored.Filled.Backspace,
                 contentDescription = "Delete",
                 tint = LineIconBlack,
                 modifier = Modifier.size(20.dp)

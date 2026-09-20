@@ -20,7 +20,7 @@ class ExampleRobolectricTest {
   fun `read string from context`() {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val appName = context.getString(R.string.app_name)
-    assertEquals("SusuLedger", appName)
+    assertEquals("Susu Ledger", appName)
   }
 
   @Test
@@ -58,7 +58,9 @@ class ExampleRobolectricTest {
   @Test
   fun `verify SusuDatabase initialization and WhatsApp multi-group bot flow`() = kotlinx.coroutines.runBlocking {
     val context = ApplicationProvider.getApplicationContext<Context>()
-    val db = com.example.data.local.SusuDatabase.getDatabase(context, this)
+    val db = androidx.room.Room.inMemoryDatabaseBuilder(context, com.example.data.local.SusuDatabase::class.java)
+      .allowMainThreadQueries()
+      .build()
     val dao = db.susuDao()
     com.example.data.local.SusuDatabase.populateInitialData(dao)
     val repo = com.example.data.repository.SusuRepository(dao)
@@ -108,7 +110,9 @@ class ExampleRobolectricTest {
   @Test
   fun `verify cryptographic ledger integrity and tampering detection`() = kotlinx.coroutines.runBlocking {
     val context = ApplicationProvider.getApplicationContext<Context>()
-    val db = com.example.data.local.SusuDatabase.getDatabase(context, this)
+    val db = androidx.room.Room.inMemoryDatabaseBuilder(context, com.example.data.local.SusuDatabase::class.java)
+      .allowMainThreadQueries()
+      .build()
     val dao = db.susuDao()
     com.example.data.local.SusuDatabase.populateInitialData(dao)
     val repo = com.example.data.repository.SusuRepository(dao)

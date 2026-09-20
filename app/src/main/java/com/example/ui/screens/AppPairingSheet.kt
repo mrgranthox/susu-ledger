@@ -19,7 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Lock
@@ -64,7 +64,8 @@ fun AppPairingSheet(
   sheetState: SheetState,
   pairingCode: String,
   secondsRemaining: Int,
-  onDismiss: () -> Unit
+  onDismiss: () -> Unit,
+  onGenerateNewCode: () -> Unit = {}
 ) {
   val context = LocalContext.current
   val clipboard = LocalClipboardManager.current
@@ -94,7 +95,7 @@ fun AppPairingSheet(
         contentAlignment = Alignment.Center
       ) {
         Icon(
-          imageVector = Icons.Default.Chat,
+          imageVector = Icons.AutoMirrored.Filled.Chat,
           contentDescription = null,
           tint = WhatsAppGreen,
           modifier = Modifier.size(28.dp)
@@ -104,7 +105,7 @@ fun AppPairingSheet(
       Spacer(modifier = Modifier.height(12.dp))
 
       Text(
-        text = "App-to-Bot WhatsApp Pairing",
+        text = "WhatsApp Bot Pairing",
         style = MaterialTheme.typography.titleLarge.copy(
           fontWeight = FontWeight.Bold,
           color = TextPrimary
@@ -112,7 +113,7 @@ fun AppPairingSheet(
       )
 
       Text(
-        text = "Pair your SusuLedger mobile instance with the Cloud Run WhatsApp webhook bot engine.",
+        text = "Pair your SusuLedger mobile instance with the WhatsApp bot to enable automated collection reminders and member receipts.",
         style = MaterialTheme.typography.bodyMedium.copy(
           color = TextSecondary,
           textAlign = TextAlign.Center
@@ -196,6 +197,17 @@ fun AppPairingSheet(
               )
             )
           }
+
+          Spacer(modifier = Modifier.height(10.dp))
+
+          OutlinedButton(
+            onClick = onGenerateNewCode,
+            modifier = Modifier.height(34.dp),
+            shape = RoundedCornerShape(8.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+          ) {
+            Text("Auto-Generate New Code", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = ForestGreenPrimary)
+          }
         }
       }
 
@@ -251,7 +263,7 @@ fun AppPairingSheet(
           contentColor = Color.White
         )
       ) {
-        Icon(imageVector = Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(20.dp))
+        Icon(imageVector = Icons.AutoMirrored.Filled.Chat, contentDescription = null, modifier = Modifier.size(20.dp))
         Spacer(modifier = Modifier.width(8.dp))
         Text(
           text = "Open WhatsApp & Send Code",

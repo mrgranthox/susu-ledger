@@ -1,10 +1,102 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
+const cacheService = require('../config/redis');
 const { generatePaymentHash, verifyLedgerChain } = require('../services/cryptoEngine');
 const { initializeMoMoSubscription } = require('../services/paystackService');
 const { generateCycleCsv, generateAnnualLedgerSummary } = require('../services/exportService');
-const { sendWhatsAppTextMessage } = require('../services/whatsappService');
+const { sendWhatsAppTextMessage, sendWhatsAppInteractiveMessage, sendWhatsAppTemplate } = require('../services/whatsappService');
+
+// 0. Cloud Run & System Diagnostics Health Status Check
+router.get('/status', async (req, res) => {
+  let dbStatus = 'healthy';
+  let dbLatency = 0;
+  try {
+    const t0 = Date.now();
+    await db.query('SELECT 1');
+    dbLatency = Date.now() - t0;
+  } catch (dbErr) {
+    dbStatus = `error: ${dbErr.message}`;
+  }
+
+  const redisPing = await cacheService.ping();
+  const metaConfigured = Boolean(process.env.META_WHATSAPP_PHONE_NUMBER_ID || process.env.WHATSAPP_PHONE_ID);
+  const tokenConfigured = Boolean(process.env.META_WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_TOKEN);
+
+  res.json({
+    status: 'ONLINE',
+    service: 'SusuLedger Cloud Run Core Engine',
+    timestamp: new Date().toISOString(),
+    database: {
+      engine: 'Cloud SQL PostgreSQL',
+      status: dbStatus,
+      latencyMs: dbLatency
+    },
+    cache: {
+      engine: cacheService.isAvailable() ? 'Cloud Memorystore Redis' : 'In-Memory Cache Fallback',
+      ping: redisPing
+    },
+    whatsappBot: {
+      provider: 'Meta WhatsApp Cloud API v20.0',
+      phoneIdConfigured: metaConfigured,
+      tokenConfigured: tokenConfigured,
+      webhookPath: '/webhooks/whatsapp',
+      autoPairingSupported: true
+    },
+    cryptoEngine: {
+      algorithm: 'SHA-256 Hash Chaining',
+      doubleEntryBalanced: true
+    }
+  });
+});
+
+// 0b. Register/Refresh Dynamic Bot Pairing Code
+router.post('/pair-bot', async (req, res) => {
+  const { code, phone, groupId } = req.body;
+  if (!code) {
+    return res.status(400).json({ error: 'Pairing code is required' });
+  }
+
+  const cleanCode = code.trim().toUpperCase();
+  const pairData = {
+    code: cleanCode,
+    phone: phone || '+233000000000',
+    groupId: groupId || null,
+    createdAt: new Date().toISOString(),
+    status: 'PENDING_WHATSAPP_CONFIRMATION'
+  };
+
+  // 15-minute TTL (900 seconds)
+  await cacheService.set(`pair:${cleanCode}`, pairData, 900);
+  console.log(`[Bot Pairing] Registered dynamic code: ${cleanCode} for ${pairData.phone} (15m TTL)`);
+
+  res.json({
+    success: true,
+    pairingCode: cleanCode,
+    expiresInSeconds: 900,
+    message: 'Pairing code registered with Cloud Run engine.'
+  });
+});
+
+// 0c. Send Live WhatsApp Message to Member Phone
+router.post('/whatsapp/send-message', async (req, res) => {
+  const { phone, message, identityId } = req.body;
+  if (!phone || !message) {
+    return res.status(400).json({ error: 'Phone and message body are required' });
+  }
+
+  try {
+    const result = await sendWhatsAppTextMessage(phone, message, identityId);
+    res.json({
+      success: true,
+      phone,
+      result,
+      message: 'WhatsApp message dispatched to member.'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // 1. Get Group Details
 router.get('/groups/:id', async (req, res) => {

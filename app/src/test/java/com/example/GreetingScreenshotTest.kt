@@ -24,7 +24,10 @@ class GreetingScreenshotTest {
   fun greeting_screenshot() {
     composeTestRule.setContent {
       SusuLedgerTheme {
-        AuthOtpScreen(onLoginSuccess = { _, _ -> })
+        AuthOtpScreen(
+          onAuthenticate = { _, _, _, callback -> callback(true, null) },
+          onNavigateToRegister = {}
+        )
       }
     }
 

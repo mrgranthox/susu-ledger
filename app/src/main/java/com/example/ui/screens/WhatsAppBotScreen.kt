@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,15 +25,18 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Campaign
-import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -42,14 +46,13 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -60,22 +63,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.MemberEntity
 import com.example.data.local.MessageLogEntity
+import com.example.data.remote.CloudSystemStatusResponse
+import com.example.ui.components.StandardNavTopBar
 import com.example.ui.theme.BorderGrey
 import com.example.ui.theme.ForestGreenLightFill
 import com.example.ui.theme.ForestGreenPrimary
-import com.example.ui.theme.LineIconBlack
 import com.example.ui.theme.LineIconGrey
 import com.example.ui.theme.PureWhite
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
-import com.example.ui.components.StandardNavTopBar
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -89,14 +95,19 @@ fun WhatsAppBotScreen(
   groupName: String = "Susu Group",
   messages: List<MessageLogEntity>,
   members: List<MemberEntity>,
+  pairingCode: String = "",
+  cloudStatus: CloudSystemStatusResponse? = null,
   onBack: () -> Unit,
   onSendMessage: (phone: String, messageText: String) -> Unit,
   onOpenPairing: () -> Unit,
+  onRefreshPairingCode: () -> Unit = {},
+  onCheckCloudStatus: () -> Unit = {},
   onSendWeeklyReminder: () -> Unit = {},
   onSendUnpaidNudges: () -> Unit = {},
   onSendSundayDigest: () -> Unit = {}
 ) {
   val context = LocalContext.current
+  val clipboard = LocalClipboardManager.current
   var selectedMember by remember(members) { mutableStateOf(members.firstOrNull()) }
   var inputMessage by remember { mutableStateOf("") }
   val listState = rememberLazyListState()
@@ -113,7 +124,7 @@ fun WhatsAppBotScreen(
     topBar = {
       StandardNavTopBar(
         title = "WhatsApp Bot Channel",
-        subtitle = "$groupName • Cloud API Integration",
+        subtitle = groupName,
         onBackClick = onBack,
         actions = {
           Button(
@@ -121,7 +132,9 @@ fun WhatsAppBotScreen(
             shape = RoundedCornerShape(8.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF1F5F9)),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-            modifier = Modifier.height(34.dp).testTag("whatsapp_pair_btn")
+            modifier = Modifier
+              .height(34.dp)
+              .testTag("whatsapp_pair_btn")
           ) {
             Icon(imageVector = Icons.Default.Smartphone, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(14.dp))
             Spacer(modifier = Modifier.width(4.dp))
@@ -137,15 +150,124 @@ fun WhatsAppBotScreen(
         .background(WhatsAppChatBg)
         .padding(paddingValues)
     ) {
-      // Top Outbound Automation Hub
+      // Top Live Infrastructure & Pairing Status Card
       Surface(
         color = PureWhite,
         border = BorderStroke(1.dp, BorderGrey),
         modifier = Modifier.fillMaxWidth()
       ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+          // Bot Status Row
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Box(
+                modifier = Modifier
+                  .size(8.dp)
+                  .clip(CircleShape)
+                  .background(ForestGreenPrimary)
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(
+                text = "WhatsApp Bot Gateway: ACTIVE",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = ForestGreenPrimary
+              )
+            }
+
+            Text(
+              text = "Live Channel",
+              fontSize = 10.sp,
+              color = TextSecondary
+            )
+          }
+
+          Spacer(modifier = Modifier.height(8.dp))
+
+          // Dynamic Pairing Code Summary Box
+          if (pairingCode.isNotBlank()) {
+            Surface(
+              shape = RoundedCornerShape(8.dp),
+              color = Color(0xFFF8FAFC),
+              border = BorderStroke(1.dp, BorderGrey),
+              modifier = Modifier.fillMaxWidth()
+            ) {
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Column {
+                  Text(
+                    text = "ACTIVE BOT PAIRING CODE",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.6.sp,
+                    color = TextSecondary
+                  )
+                  Text(
+                    text = pairingCode,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Monospace,
+                    color = ForestGreenPrimary
+                  )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  IconButton(
+                    onClick = {
+                      clipboard.setText(AnnotatedString(pairingCode))
+                      Toast.makeText(context, "Pairing code copied!", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.size(32.dp)
+                  ) {
+                    Icon(
+                      imageVector = Icons.Default.ContentCopy,
+                      contentDescription = "Copy code",
+                      tint = TextSecondary,
+                      modifier = Modifier.size(16.dp)
+                    )
+                  }
+
+                  TextButton(
+                    onClick = {
+                      val intent = Intent(Intent.ACTION_VIEW).apply {
+                        data = Uri.parse("https://api.whatsapp.com/send?text=${Uri.encode("PAIR:$pairingCode")}")
+                      }
+                      try {
+                        context.startActivity(intent)
+                      } catch (e: Exception) {
+                        Toast.makeText(context, "Copied PAIR:$pairingCode", Toast.LENGTH_SHORT).show()
+                      }
+                    },
+                    modifier = Modifier.height(30.dp)
+                  ) {
+                    Icon(
+                      imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                      contentDescription = null,
+                      tint = WhatsAppGreen,
+                      modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text("Pair in WhatsApp", fontSize = 11.sp, color = WhatsAppGreen, fontWeight = FontWeight.Bold)
+                  }
+                }
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(10.dp))
+
+          // Outbound Broadcast Actions
           Text(
-            text = "BROADCAST AUTOMATION",
+            text = "META BROADCAST DISPATCHES",
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.8.sp,
@@ -181,7 +303,7 @@ fun WhatsAppBotScreen(
           if (members.isNotEmpty()) {
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-              text = "MEMBER CONVERSATION FOCUS",
+              text = "SELECT MEMBER RECIPIENT",
               fontSize = 10.sp,
               fontWeight = FontWeight.Bold,
               letterSpacing = 0.8.sp,
@@ -226,7 +348,7 @@ fun WhatsAppBotScreen(
         }
       }
 
-      // Chat Messages List
+      // Live Activity Stream & Webhook Logs
       if (messages.isEmpty()) {
         Box(
           modifier = Modifier
@@ -243,7 +365,7 @@ fun WhatsAppBotScreen(
                 .background(PureWhite),
               contentAlignment = Alignment.Center
             ) {
-              Icon(Icons.Default.Chat, contentDescription = null, tint = WhatsAppGreen, modifier = Modifier.size(26.dp))
+              Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, tint = WhatsAppGreen, modifier = Modifier.size(26.dp))
             }
             Spacer(modifier = Modifier.height(12.dp))
             Text(
@@ -254,7 +376,7 @@ fun WhatsAppBotScreen(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-              text = "Messages from $groupName members and automated notifications will stream here in real-time.",
+              text = "Live WhatsApp bot messages from $groupName members and automated notifications will appear here.",
               fontSize = 12.sp,
               color = TextSecondary,
               textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -280,8 +402,8 @@ fun WhatsAppBotScreen(
         }
       }
 
-      // Interactive Quick Actions for Active Group Context
-      val currentPhone = selectedMember?.phone ?: "+233 24 123 4567"
+      // Direct Live WhatsApp Dispatch Bar
+      val targetPhone = selectedMember?.phone ?: "+233 24 123 4567"
       Surface(
         color = PureWhite,
         border = BorderStroke(1.dp, BorderGrey),
@@ -294,7 +416,7 @@ fun WhatsAppBotScreen(
             verticalAlignment = Alignment.CenterVertically
           ) {
             Text(
-              text = "GROUP BOT COMMANDS (${selectedMember?.alias ?: "Active Member"})",
+              text = "DIRECT WHATSAPP DISPATCH • ${selectedMember?.alias ?: "All Members"}",
               fontSize = 9.sp,
               fontWeight = FontWeight.Bold,
               letterSpacing = 0.8.sp,
@@ -304,89 +426,67 @@ fun WhatsAppBotScreen(
             // Direct WhatsApp App launcher
             TextButton(
               onClick = {
-                val cleanDigits = currentPhone.replace("+", "").replace(" ", "")
+                val cleanDigits = targetPhone.replace("+", "").replace(" ", "")
                 val uri = Uri.parse("https://wa.me/$cleanDigits?text=Hello%20from%20$groupName")
                 val intent = Intent(Intent.ACTION_VIEW, uri)
-                context.startActivity(intent)
+                try {
+                  context.startActivity(intent)
+                } catch (e: Exception) {
+                  Toast.makeText(context, "Opening chat with $targetPhone", Toast.LENGTH_SHORT).show()
+                }
               },
               modifier = Modifier.height(26.dp)
             ) {
-              Icon(Icons.Default.OpenInNew, contentDescription = null, tint = WhatsAppGreen, modifier = Modifier.size(12.dp))
+              Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = WhatsAppGreen, modifier = Modifier.size(12.dp))
               Spacer(modifier = Modifier.width(4.dp))
-              Text("Open WhatsApp", fontSize = 10.sp, color = WhatsAppGreen, fontWeight = FontWeight.Bold)
+              Text("Open Direct Chat", fontSize = 10.sp, color = WhatsAppGreen, fontWeight = FontWeight.Bold)
             }
           }
 
           Spacer(modifier = Modifier.height(6.dp))
 
-          // Quick Action Chips
+          // Text Input Bar for Live Dispatch
           Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            verticalAlignment = Alignment.CenterVertically
           ) {
-            QuickActionButton(title = "PAID Claim", modifier = Modifier.weight(1f)) {
-              onSendMessage(currentPhone, "PAID")
-            }
-            QuickActionButton(title = "My Balance", modifier = Modifier.weight(1f)) {
-              onSendMessage(currentPhone, "BALANCE")
-            }
-            QuickActionButton(title = "Group Progress", modifier = Modifier.weight(1.1f)) {
-              onSendMessage(currentPhone, "PROGRESS")
-            }
-            QuickActionButton(title = "Help Menu", modifier = Modifier.weight(0.9f)) {
-              onSendMessage(currentPhone, "HELP")
-            }
-          }
-        }
-      }
-
-      // Text Input Bar
-      Surface(
-        color = PureWhite,
-        modifier = Modifier.fillMaxWidth()
-      ) {
-        Row(
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-          verticalAlignment = Alignment.CenterVertically
-        ) {
-          OutlinedTextField(
-            value = inputMessage,
-            onValueChange = { inputMessage = it },
-            placeholder = { Text("Send group WhatsApp message...", fontSize = 13.sp) },
-            modifier = Modifier
-              .weight(1f)
-              .testTag("whatsapp_chat_input"),
-            colors = OutlinedTextFieldDefaults.colors(
-              focusedBorderColor = WhatsAppGreen,
-              unfocusedBorderColor = BorderGrey
-            ),
-            shape = RoundedCornerShape(20.dp),
-            singleLine = true
-          )
-
-          Spacer(modifier = Modifier.width(8.dp))
-
-          IconButton(
-            onClick = {
-              if (inputMessage.isNotBlank()) {
-                onSendMessage(currentPhone, inputMessage)
-                inputMessage = ""
-              }
-            },
-            modifier = Modifier
-              .size(44.dp)
-              .clip(CircleShape)
-              .background(WhatsAppGreen)
-              .testTag("whatsapp_send_btn")
-          ) {
-            Icon(
-              imageVector = Icons.AutoMirrored.Filled.Send,
-              contentDescription = "Send",
-              tint = PureWhite,
-              modifier = Modifier.size(18.dp)
+            OutlinedTextField(
+              value = inputMessage,
+              onValueChange = { inputMessage = it },
+              placeholder = { Text("Send live WhatsApp announcement...", fontSize = 13.sp) },
+              modifier = Modifier
+                .weight(1f)
+                .testTag("whatsapp_chat_input"),
+              colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = WhatsAppGreen,
+                unfocusedBorderColor = BorderGrey
+              ),
+              shape = RoundedCornerShape(20.dp),
+              singleLine = true
             )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            IconButton(
+              onClick = {
+                if (inputMessage.isNotBlank()) {
+                  onSendMessage(targetPhone, inputMessage)
+                  inputMessage = ""
+                }
+              },
+              modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(WhatsAppGreen)
+                .testTag("whatsapp_send_btn")
+            ) {
+              Icon(
+                imageVector = Icons.AutoMirrored.Filled.Send,
+                contentDescription = "Send",
+                tint = PureWhite,
+                modifier = Modifier.size(18.dp)
+              )
+            }
           }
         }
       }
@@ -418,32 +518,6 @@ private fun OutboundTriggerChip(
         text = title,
         fontSize = 11.sp,
         fontWeight = FontWeight.Bold,
-        color = ForestGreenPrimary
-      )
-    }
-  }
-}
-
-@Composable
-private fun QuickActionButton(
-  title: String,
-  modifier: Modifier = Modifier,
-  onClick: () -> Unit
-) {
-  Surface(
-    shape = RoundedCornerShape(6.dp),
-    color = PureWhite,
-    border = BorderStroke(1.dp, BorderGrey),
-    modifier = modifier.clickable(onClick = onClick)
-  ) {
-    Box(
-      modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp),
-      contentAlignment = Alignment.Center
-    ) {
-      Text(
-        text = title,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.SemiBold,
         color = ForestGreenPrimary
       )
     }
