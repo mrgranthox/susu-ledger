@@ -557,6 +557,7 @@ class MainActivity : FragmentActivity() {
                         members = members,
                         cyclePayments = payments.filter { it.cycleId == (activeCycle?.id ?: "") },
                         cycleNumber = activeCycle?.number ?: 1,
+                        expectedCycleAmount = activeCycle?.amountDue ?: (currentGroup?.amount ?: 50.0),
                         onRecordPaymentForMember = { member -> viewModel.openPaymentSheetForMember(member) },
                         onAddMemberClick = { viewModel.showAddMemberDialog(true) },
                         onImportContactsClick = requestContactsAccess,

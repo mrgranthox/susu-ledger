@@ -495,36 +495,14 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
 
   fun verifyOfficerPin(enteredPin: String, onResult: (Boolean) -> Unit) {
     viewModelScope.launch {
-      if (enteredPin.length != 4) {
+      if (enteredPin.length != 4 || !enteredPin.all { it.isDigit() }) {
         onResult(false)
         return@launch
       }
 
       sessionManager.recordActivity()
 
-      // 0. Direct match against saved session PIN
-      val savedPin = sessionManager.savedPin
-      if (savedPin.isNotBlank() && enteredPin == savedPin) {
-        unlockApp()
-        onResult(true)
-        return@launch
-      }
-
-      // 1. Check cached sessionManager hash
-      val cachedHash = sessionManager.pinHash
-      val cachedSalt = sessionManager.pinSalt
-      if (cachedHash.isNotBlank()) {
-        val valid = CryptoUtils.verifyPin(enteredPin, cachedHash, cachedSalt) ||
-            CryptoUtils.verifyPin(enteredPin, cachedHash, "")
-        if (valid) {
-          sessionManager.savedPin = enteredPin
-          unlockApp()
-          onResult(true)
-          return@launch
-        }
-      }
-
-      // 2. Query Room DB for current officer
+      // 1. Primary check: Query Room DB for current officer to get canonical salted SHA-256 hash
       val phone = _userPhone.value.ifBlank { sessionManager.loggedInPhone }
       val cleanDigits = phone.filter { it.isDigit() }.takeLast(9)
       val allIdentities = repository.getAllIdentitiesOnce()
@@ -536,7 +514,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
 
       if (identity != null) {
         val user = repository.getUserById(identity.id)
-        if (user != null) {
+        if (user != null && user.pinHash.isNotBlank()) {
           val valid = CryptoUtils.verifyPin(enteredPin, user.pinHash, identity.id) ||
               CryptoUtils.verifyPin(enteredPin, user.pinHash, "")
           if (valid) {
@@ -546,11 +524,40 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
             unlockApp()
             onResult(true)
             return@launch
+          } else {
+            // Salted hash mismatch against database credentials
+            onResult(false)
+            return@launch
           }
         }
       }
 
-      // PIN mismatch — reject without arbitrary bypass
+      // 2. Check cached sessionManager hash if DB query returned no user record
+      val cachedHash = sessionManager.pinHash
+      val cachedSalt = sessionManager.pinSalt
+      if (cachedHash.isNotBlank()) {
+        val valid = CryptoUtils.verifyPin(enteredPin, cachedHash, cachedSalt) ||
+            CryptoUtils.verifyPin(enteredPin, cachedHash, "")
+        if (valid) {
+          sessionManager.savedPin = enteredPin
+          unlockApp()
+          onResult(true)
+          return@launch
+        } else {
+          onResult(false)
+          return@launch
+        }
+      }
+
+      // 3. Check exact match against savedSession PIN if populated
+      val savedPin = sessionManager.savedPin
+      if (savedPin.isNotBlank() && enteredPin == savedPin) {
+        unlockApp()
+        onResult(true)
+        return@launch
+      }
+
+      // Strictly reject invalid input
       onResult(false)
     }
   }

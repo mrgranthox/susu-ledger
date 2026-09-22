@@ -62,7 +62,7 @@ class SessionManager(context: Context) {
     set(value) = prefs.edit().putString(KEY_PIN_SALT, value).apply()
 
   var savedPin: String
-    get() = prefs.getString(KEY_SAVED_PIN, "1234") ?: "1234"
+    get() = prefs.getString(KEY_SAVED_PIN, "") ?: ""
     set(value) = prefs.edit().putString(KEY_SAVED_PIN, value).apply()
 
   var isBiometricEnabled: Boolean
