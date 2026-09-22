@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -68,6 +69,7 @@ fun MembersScreen(
   cycleNumber: Int,
   onRecordPaymentForMember: (MemberEntity) -> Unit,
   onAddMemberClick: () -> Unit,
+  onImportContactsClick: (() -> Unit)? = null,
   onBackClick: (() -> Unit)? = null
 ) {
   var searchQuery by remember { mutableStateOf("") }
@@ -101,26 +103,49 @@ fun MembersScreen(
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 6.dp)
         ) {
-          // Search bar with thin grey border
-          OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
-            placeholder = { Text("Search members...", color = LineIconGrey, fontSize = 14.sp) },
-            leadingIcon = {
-              Icon(imageVector = Icons.Default.Search, contentDescription = null, tint = LineIconGrey, modifier = Modifier.size(18.dp))
-            },
-            modifier = Modifier
-              .fillMaxWidth()
-              .testTag("members_search_input"),
-            colors = OutlinedTextFieldDefaults.colors(
-              focusedBorderColor = ForestGreenPrimary,
-              unfocusedBorderColor = BorderGrey,
-              focusedContainerColor = PureWhite,
-              unfocusedContainerColor = PureWhite
-            ),
-            shape = RoundedCornerShape(8.dp),
-            singleLine = true
-          )
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            // Search bar with thin grey border
+            OutlinedTextField(
+              value = searchQuery,
+              onValueChange = { searchQuery = it },
+              placeholder = { Text("Search members...", color = LineIconGrey, fontSize = 14.sp) },
+              leadingIcon = {
+                Icon(imageVector = Icons.Default.Search, contentDescription = null, tint = LineIconGrey, modifier = Modifier.size(18.dp))
+              },
+              modifier = Modifier
+                .weight(1f)
+                .testTag("members_search_input"),
+              colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = ForestGreenPrimary,
+                unfocusedBorderColor = BorderGrey,
+                focusedContainerColor = PureWhite,
+                unfocusedContainerColor = PureWhite
+              ),
+              shape = RoundedCornerShape(8.dp),
+              singleLine = true
+            )
+
+            if (onImportContactsClick != null) {
+              androidx.compose.material3.OutlinedIconButton(
+                onClick = onImportContactsClick,
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(1.dp, ForestGreenPrimary),
+                modifier = Modifier
+                  .size(52.dp)
+                  .testTag("import_contacts_top_btn")
+              ) {
+                Icon(
+                  imageVector = Icons.Default.Contacts,
+                  contentDescription = "Import Contacts",
+                  tint = ForestGreenPrimary
+                )
+              }
+            }
+          }
         }
       }
     },

@@ -6,11 +6,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Contacts
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -97,7 +99,8 @@ fun NewWeekDialog(
 @Composable
 fun AddMemberDialog(
   onDismiss: () -> Unit,
-  onConfirm: (alias: String, phone: String) -> Unit
+  onConfirm: (alias: String, phone: String) -> Unit,
+  onOpenContacts: (() -> Unit)? = null
 ) {
   var name by remember { mutableStateOf("") }
   var rawPhone by remember { mutableStateOf("") }
@@ -128,6 +131,22 @@ fun AddMemberDialog(
           text = "Enter the new member details. A Member Equity ledger account will be initialized.",
           style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary)
         )
+
+        if (onOpenContacts != null) {
+          Spacer(modifier = Modifier.height(10.dp))
+          OutlinedButton(
+            onClick = {
+              onDismiss()
+              onOpenContacts()
+            },
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.fillMaxWidth().testTag("pick_from_contacts_btn")
+          ) {
+            Icon(Icons.Default.Contacts, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Select from Phone Contacts", color = ForestGreenPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+          }
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
 

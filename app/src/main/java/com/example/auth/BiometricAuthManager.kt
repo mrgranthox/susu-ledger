@@ -14,6 +14,15 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 
+fun Context.findFragmentActivity(): FragmentActivity? {
+  var current: Context? = this
+  while (current is android.content.ContextWrapper) {
+    if (current is FragmentActivity) return current
+    current = current.baseContext
+  }
+  return null
+}
+
 sealed class BiometricAuthResult {
   data class Success(val method: String, val message: String) : BiometricAuthResult()
   data class FallbackToPin(val reason: String) : BiometricAuthResult()
@@ -76,17 +85,20 @@ class BiometricAuthManager(private val context: Context) {
    * Runs natively via androidx.biometric.BiometricPrompt.
    */
   suspend fun authenticateWithBiometrics(
-    activity: Activity,
+    activity: Activity? = null,
     title: String = "Unlock SusuLedger",
     subtitle: String = "Scan fingerprint or face to authenticate"
   ): BiometricAuthResult {
-    val fragmentActivity = activity as? FragmentActivity
+    val fragmentActivity = (activity as? FragmentActivity)
+      ?: (activity?.baseContext as? FragmentActivity)
+      ?: context.findFragmentActivity()
+
     if (fragmentActivity == null) {
-      Log.w(TAG, "Activity is not a FragmentActivity, cannot show native BiometricPrompt.")
+      Log.w(TAG, "No FragmentActivity found in context hierarchy, cannot show native BiometricPrompt.")
       return BiometricAuthResult.FallbackToPin("Device context does not support biometric dialog.")
     }
 
-    val bm = BiometricManager.from(activity)
+    val bm = BiometricManager.from(fragmentActivity)
     val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
         BiometricManager.Authenticators.BIOMETRIC_WEAK
 

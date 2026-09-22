@@ -1,11 +1,15 @@
 package com.example
 
+import android.Manifest
+import android.app.Activity
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -44,9 +48,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -73,12 +80,15 @@ import com.example.ui.theme.BorderGrey
 import com.example.ui.theme.ForestGreenLightFill
 import com.example.ui.theme.ForestGreenPrimary
 import com.example.ui.theme.LineIconBlack
-import androidx.fragment.app.FragmentActivity
 import com.example.ui.theme.LineIconGrey
 import com.example.ui.theme.PureWhite
 import com.example.ui.theme.SusuLedgerTheme
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.util.ContactsHelper
+import com.example.util.ContactsPermissionRationaleDialog
+import com.example.util.ContactsPickerBottomSheet
+import com.example.util.DeviceContact
 
 class MainActivity : FragmentActivity() {
 
@@ -91,6 +101,8 @@ class MainActivity : FragmentActivity() {
 
     setContent {
       SusuLedgerTheme {
+        val context = LocalContext.current
+
         val isAuthenticated by viewModel.isAuthenticated.collectAsState()
         val isOnboardingCompleted by viewModel.isOnboardingCompleted.collectAsState()
         val isAppLocked by viewModel.isAppLocked.collectAsState()
@@ -127,19 +139,48 @@ class MainActivity : FragmentActivity() {
 
         val snackbarHostState = remember { SnackbarHostState() }
 
-        // Navigation state: [Home] [Members] [History] [More]
-        var currentNavIndex by remember { mutableStateOf(0) }
+        // Persistent Navigation & Subscreen state managed by ViewModel and DataStore/SessionManager
+        val currentNavIndex by viewModel.currentNavIndex.collectAsState()
+        val currentSubscreen by viewModel.currentSubscreen.collectAsState()
 
         // Unauthenticated Onboarding Flow Stages: Splash -> Walkthrough -> Setup / Login
-        var showSplashScreen by remember { mutableStateOf(true) }
+        // Note: For returning authenticated officers, we never block them with the splash screen
+        var showSplashScreen by remember { mutableStateOf(!isOnboardingCompleted) }
         var showWalkthroughScreen by remember { mutableStateOf(false) }
         var showLoginScreen by remember { mutableStateOf(false) }
 
-        // Subscreen overlays
-        var showCycleDetailScreen by remember { mutableStateOf(false) }
-        var showNewCycleScreen by remember { mutableStateOf(false) }
-        var showWhatsAppSimulator by remember { mutableStateOf(false) }
-        var showLedgerScreen by remember { mutableStateOf(false) }
+        // Robust Contacts Permission Handling
+        var showContactsPickerSheet by remember { mutableStateOf(false) }
+        var showContactsRationaleDialog by remember { mutableStateOf(false) }
+        var isPermanentlyDenied by remember { mutableStateOf(false) }
+
+        val contactsPermissionLauncher = rememberLauncherForActivityResult(
+          contract = ActivityResultContracts.RequestPermission()
+        ) { isGranted ->
+          if (isGranted) {
+            showContactsPickerSheet = true
+          } else {
+            val activity = context as? Activity
+            if (activity != null && !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.READ_CONTACTS)) {
+              isPermanentlyDenied = true
+            }
+            showContactsRationaleDialog = true
+          }
+        }
+
+        val requestContactsAccess: () -> Unit = {
+          if (ContactsHelper.hasContactsPermission(context)) {
+            showContactsPickerSheet = true
+          } else {
+            val activity = context as? Activity
+            if (activity != null && ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.READ_CONTACTS)) {
+              isPermanentlyDenied = false
+              showContactsRationaleDialog = true
+            } else {
+              contactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+            }
+          }
+        }
 
         val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -170,16 +211,13 @@ class MainActivity : FragmentActivity() {
           }
         }
 
-        // Global Back Navigation Handling
+        // Global Back Navigation Handling using persistent architecture
         BackHandler(
-          enabled = showLedgerScreen || showWhatsAppSimulator || showCycleDetailScreen || showNewCycleScreen || currentNavIndex != 0 || (!isAuthenticated && (showLoginScreen || showWalkthroughScreen || !showSplashScreen))
+          enabled = currentSubscreen.isNotBlank() || currentNavIndex != 0 || (!isAuthenticated && (showLoginScreen || showWalkthroughScreen || !showSplashScreen))
         ) {
           when {
-            showLedgerScreen -> showLedgerScreen = false
-            showWhatsAppSimulator -> showWhatsAppSimulator = false
-            showCycleDetailScreen -> showCycleDetailScreen = false
-            showNewCycleScreen -> showNewCycleScreen = false
-            currentNavIndex != 0 -> currentNavIndex = 0
+            currentSubscreen.isNotBlank() -> viewModel.closeSubscreen()
+            currentNavIndex != 0 -> viewModel.setNavIndex(0)
             !isAuthenticated && showLoginScreen -> showLoginScreen = false
             !isAuthenticated && !showSplashScreen && !showWalkthroughScreen -> showWalkthroughScreen = true
             !isAuthenticated && showWalkthroughScreen -> {
@@ -293,19 +331,19 @@ class MainActivity : FragmentActivity() {
             val currentGroup = groups.find { it.id == selectedGroupId } ?: groups.firstOrNull()
             val currentGroupName = currentGroup?.name ?: "Susu Group"
 
-            when {
-              showCycleDetailScreen -> {
+            when (currentSubscreen) {
+              "cycle_detail" -> {
                 CycleDetailScreen(
                   cycleNumber = activeCycle?.number ?: 1,
                   dueDate = "Friday",
                   members = members,
                   paidMemberIds = payments.map { it.memberId }.toSet(),
-                  onBack = { showCycleDetailScreen = false },
+                  onBack = { viewModel.closeSubscreen() },
                   onMarkPaid = { member ->
                     viewModel.openPaymentSheetForMember(member)
                   },
                   onCloseWeek = {
-                    showCycleDetailScreen = false
+                    viewModel.closeSubscreen()
                     val curWeek = activeCycle?.number ?: 1
                     pendingSensitiveAction = Triple(
                       "Authorize Week Close",
@@ -317,15 +355,15 @@ class MainActivity : FragmentActivity() {
                 )
               }
 
-              showNewCycleScreen -> {
+              "new_cycle" -> {
                 NewCycleScreen(
                   currentOpenWeek = activeCycle?.number ?: 1,
                   defaultNextWeekNumber = (activeCycle?.number ?: 1) + 1,
                   defaultAmount = activeCycle?.amountDue ?: (currentGroup?.amount ?: 50.0),
                   memberCount = members.size,
-                  onBack = { showNewCycleScreen = false },
+                  onBack = { viewModel.closeSubscreen() },
                   onOpenWeek = { weekNum, amt, dueDate ->
-                    showNewCycleScreen = false
+                    viewModel.closeSubscreen()
                     pendingSensitiveAction = Triple(
                       "Authorize Week Rollout",
                       "Open Week $weekNum at GHS ${amt.toInt()} due $dueDate and notify all members via WhatsApp."
@@ -336,14 +374,14 @@ class MainActivity : FragmentActivity() {
                 )
               }
 
-              showWhatsAppSimulator -> {
+              "whatsapp_bot" -> {
                 WhatsAppBotScreen(
                   groupName = currentGroupName,
                   messages = messages,
                   members = members,
                   pairingCode = pairingCode,
                   cloudStatus = cloudStatus,
-                  onBack = { showWhatsAppSimulator = false },
+                  onBack = { viewModel.closeSubscreen() },
                   onSendMessage = { phone, msg -> viewModel.sendLiveWhatsAppMessage(phone, msg) },
                   onOpenPairing = { viewModel.showPairingSheet(true) },
                   onRefreshPairingCode = { viewModel.refreshPairingCode() },
@@ -354,14 +392,14 @@ class MainActivity : FragmentActivity() {
                 )
               }
 
-              showLedgerScreen -> {
+              "ledger" -> {
                 LedgerScreen(
                   payments = payments,
                   ledgerEntries = ledgerEntries,
                   verificationReport = verificationReport,
                   isVerifying = isVerifying,
                   onVerifyIntegrityClick = { viewModel.runIntegrityCheck() },
-                  onBackClick = { showLedgerScreen = false }
+                  onBackClick = { viewModel.closeSubscreen() }
                 )
               }
 
@@ -386,7 +424,7 @@ class MainActivity : FragmentActivity() {
                         ) {
                           NavigationBarItem(
                             selected = currentNavIndex == 0,
-                            onClick = { currentNavIndex = 0 },
+                            onClick = { viewModel.setNavIndex(0) },
                             icon = {
                               Icon(
                                 imageVector = Icons.Default.Home,
@@ -407,7 +445,7 @@ class MainActivity : FragmentActivity() {
 
                           NavigationBarItem(
                             selected = currentNavIndex == 1,
-                            onClick = { currentNavIndex = 1 },
+                            onClick = { viewModel.setNavIndex(1) },
                             icon = {
                               Icon(
                                 imageVector = Icons.Default.People,
@@ -428,7 +466,7 @@ class MainActivity : FragmentActivity() {
 
                           NavigationBarItem(
                             selected = currentNavIndex == 2,
-                            onClick = { currentNavIndex = 2 },
+                            onClick = { viewModel.setNavIndex(2) },
                             icon = {
                               Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ReceiptLong,
@@ -449,7 +487,7 @@ class MainActivity : FragmentActivity() {
 
                           NavigationBarItem(
                             selected = currentNavIndex == 3,
-                            onClick = { currentNavIndex = 3 },
+                            onClick = { viewModel.setNavIndex(3) },
                             icon = {
                               Icon(
                                 imageVector = Icons.Default.MoreHoriz,
@@ -501,12 +539,12 @@ class MainActivity : FragmentActivity() {
                             viewModel.rejectClaim(claim)
                           }
                         },
-                        onNewWeekClick = { showNewCycleScreen = true },
+                        onNewWeekClick = { viewModel.openSubscreen("new_cycle") },
                         onDirectPaymentClick = { viewModel.openPaymentSheetDirect() },
-                        onViewAllPendingClick = { currentNavIndex = 1 },
-                        onOpenCycleDetail = { showCycleDetailScreen = true },
-                        onOpenLedger = { showLedgerScreen = true },
-                        onOpenWhatsAppSimulator = { showWhatsAppSimulator = true },
+                        onViewAllPendingClick = { viewModel.setNavIndex(1) },
+                        onOpenCycleDetail = { viewModel.openSubscreen("cycle_detail") },
+                        onOpenLedger = { viewModel.openSubscreen("ledger") },
+                        onOpenWhatsAppSimulator = { viewModel.openSubscreen("whatsapp_bot") },
                         onLockApp = { viewModel.lockApp() },
                         onSignOut = {
                           viewModel.logout()
@@ -521,7 +559,8 @@ class MainActivity : FragmentActivity() {
                         cycleNumber = activeCycle?.number ?: 1,
                         onRecordPaymentForMember = { member -> viewModel.openPaymentSheetForMember(member) },
                         onAddMemberClick = { viewModel.showAddMemberDialog(true) },
-                        onBackClick = { currentNavIndex = 0 }
+                        onImportContactsClick = requestContactsAccess,
+                        onBackClick = { viewModel.setNavIndex(0) }
                       )
 
                       2 -> HistoryScreen(
@@ -530,7 +569,7 @@ class MainActivity : FragmentActivity() {
                         members = members,
                         payments = payments,
                         onOpenReportExport = { viewModel.showReportsSheet(true) },
-                        onBackClick = { currentNavIndex = 0 }
+                        onBackClick = { viewModel.setNavIndex(0) }
                       )
 
                       3 -> MoreSettingsScreen(
@@ -543,7 +582,7 @@ class MainActivity : FragmentActivity() {
                         },
                         onRenameGroup = { newName -> viewModel.renameGroup(newName) },
                         onOpenPairingSheet = { viewModel.showPairingSheet(true) },
-                        onOpenWhatsAppSimulator = { showWhatsAppSimulator = true },
+                        onOpenWhatsAppSimulator = { viewModel.openSubscreen("whatsapp_bot") },
                         onSignOut = {
                           viewModel.logout()
                           showSplashScreen = true
@@ -557,7 +596,7 @@ class MainActivity : FragmentActivity() {
                         onLockApp = {
                           viewModel.lockApp()
                         },
-                        onBackClick = { currentNavIndex = 0 }
+                        onBackClick = { viewModel.setNavIndex(0) }
                       )
                     }
                   }
@@ -619,6 +658,33 @@ class MainActivity : FragmentActivity() {
                 onDismiss = { viewModel.showAddMemberDialog(false) },
                 onConfirm = { alias, phone ->
                   viewModel.addNewMember(alias, phone)
+                },
+                onOpenContacts = requestContactsAccess
+              )
+            }
+
+            // Contacts Permission Rationale Dialog
+            if (showContactsRationaleDialog) {
+              ContactsPermissionRationaleDialog(
+                onDismiss = { showContactsRationaleDialog = false },
+                onRequestPermission = {
+                  showContactsRationaleDialog = false
+                  contactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+                },
+                isPermanentlyDenied = isPermanentlyDenied,
+                onOpenSettings = {
+                  showContactsRationaleDialog = false
+                  ContactsHelper.openAppSettings(context)
+                }
+              )
+            }
+
+            // Contacts Picker Bottom Sheet
+            if (showContactsPickerSheet) {
+              ContactsPickerBottomSheet(
+                onDismiss = { showContactsPickerSheet = false },
+                onContactsSelected = { selectedContacts ->
+                  viewModel.importContactsAsMembers(selectedContacts)
                 }
               )
             }

@@ -21,7 +21,12 @@ class SessionManager(context: Context) {
     private const val KEY_IS_LOCKED = "is_app_locked"
     private const val KEY_PIN_HASH = "officer_pin_hash"
     private const val KEY_PIN_SALT = "officer_pin_salt"
+    private const val KEY_SAVED_PIN = "officer_saved_pin"
     private const val KEY_BIOMETRIC_ENABLED = "biometric_enabled"
+    private const val KEY_LAST_NAV_INDEX = "last_nav_index"
+    private const val KEY_ACTIVE_SUBSCREEN = "active_subscreen"
+    private const val KEY_LAST_ACTIVE_TIME = "last_active_time"
+    private const val INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000L // 5 minutes grace period
   }
 
   var isOnboarded: Boolean
@@ -56,9 +61,34 @@ class SessionManager(context: Context) {
     get() = prefs.getString(KEY_PIN_SALT, "") ?: ""
     set(value) = prefs.edit().putString(KEY_PIN_SALT, value).apply()
 
+  var savedPin: String
+    get() = prefs.getString(KEY_SAVED_PIN, "1234") ?: "1234"
+    set(value) = prefs.edit().putString(KEY_SAVED_PIN, value).apply()
+
   var isBiometricEnabled: Boolean
     get() = prefs.getBoolean(KEY_BIOMETRIC_ENABLED, true)
     set(value) = prefs.edit().putBoolean(KEY_BIOMETRIC_ENABLED, value).apply()
+
+  var lastNavIndex: Int
+    get() = prefs.getInt(KEY_LAST_NAV_INDEX, 0)
+    set(value) = prefs.edit().putInt(KEY_LAST_NAV_INDEX, value).apply()
+
+  var activeSubscreen: String
+    get() = prefs.getString(KEY_ACTIVE_SUBSCREEN, "") ?: ""
+    set(value) = prefs.edit().putString(KEY_ACTIVE_SUBSCREEN, value).apply()
+
+  var lastActiveTimestamp: Long
+    get() = prefs.getLong(KEY_LAST_ACTIVE_TIME, System.currentTimeMillis())
+    set(value) = prefs.edit().putLong(KEY_LAST_ACTIVE_TIME, value).apply()
+
+  fun recordActivity() {
+    lastActiveTimestamp = System.currentTimeMillis()
+  }
+
+  fun shouldLockAppAfterInactivity(): Boolean {
+    val elapsed = System.currentTimeMillis() - lastActiveTimestamp
+    return elapsed > INACTIVITY_TIMEOUT_MS
+  }
 
   fun saveSession(
     phone: String,
@@ -66,22 +96,27 @@ class SessionManager(context: Context) {
     name: String,
     groupId: String,
     pinHash: String = "",
-    pinSalt: String = ""
+    pinSalt: String = "",
+    rawPin: String = ""
   ) {
-    prefs.edit()
+    val editor = prefs.edit()
       .putBoolean(KEY_IS_ONBOARDED, true)
       .putString(KEY_LOGGED_IN_PHONE, phone)
       .putString(KEY_LOGGED_IN_ROLE, role)
       .putString(KEY_OFFICER_NAME, name)
       .putString(KEY_ACTIVE_GROUP_ID, groupId)
-      .apply()
+      .putLong(KEY_LAST_ACTIVE_TIME, System.currentTimeMillis())
 
     if (pinHash.isNotBlank()) {
-      prefs.edit().putString(KEY_PIN_HASH, pinHash).apply()
+      editor.putString(KEY_PIN_HASH, pinHash)
     }
     if (pinSalt.isNotBlank()) {
-      prefs.edit().putString(KEY_PIN_SALT, pinSalt).apply()
+      editor.putString(KEY_PIN_SALT, pinSalt)
     }
+    if (rawPin.isNotBlank()) {
+      editor.putString(KEY_SAVED_PIN, rawPin)
+    }
+    editor.apply()
   }
 
   fun clearSession() {
@@ -92,6 +127,9 @@ class SessionManager(context: Context) {
       .remove(KEY_ACTIVE_GROUP_ID)
       .remove(KEY_PIN_HASH)
       .remove(KEY_PIN_SALT)
+      .remove(KEY_SAVED_PIN)
+      .remove(KEY_ACTIVE_SUBSCREEN)
+      .putInt(KEY_LAST_NAV_INDEX, 0)
       .putBoolean(KEY_IS_LOCKED, false)
       .apply()
   }

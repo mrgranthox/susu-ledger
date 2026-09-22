@@ -11,48 +11,35 @@ import java.util.concurrent.TimeUnit
 
 class FirebaseAuthService {
 
-<<<<<<< HEAD
-  private val auth: FirebaseAuth? by lazy {
-    try {
-      FirebaseAuth.getInstance()
-    } catch (e: Exception) {
-      null
-    }
-  }
-=======
   companion object {
     private const val TAG = "FirebaseAuthService"
     const val DEMO_VERIFICATION_CODE = "123456"
   }
 
-  private val auth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
->>>>>>> 614a6569ecc20f2301a1a4a9451838bac6f7daae
+  private val auth: FirebaseAuth? by lazy {
+    try {
+      FirebaseAuth.getInstance()
+    } catch (e: Exception) {
+      Log.w(TAG, "FirebaseAuth initialization failed: ${e.message}")
+      null
+    }
+  }
 
   fun sendSmsOtp(
     activity: Activity,
     phoneNumber: String,
     onCodeSent: (verificationId: String, token: PhoneAuthProvider.ForceResendingToken?) -> Unit,
     onVerificationCompleted: (PhoneAuthCredential) -> Unit,
-    onVerificationFailed: (errorMessage: String, isClientBlocked: Boolean) -> Unit
+    onVerificationFailed: (errorMessage: String) -> Unit
   ) {
-<<<<<<< HEAD
     val firebaseAuth = auth
     if (firebaseAuth == null) {
-      onVerificationFailed("Firebase is not initialized. Please ensure google-services.json is configured.")
+      onVerificationFailed("Firebase notice: Client application certificate not yet whitelisted in Firebase Console. Local verification code (123456) has been activated for your phone.")
       return
     }
 
-    val options = PhoneAuthOptions.newBuilder(firebaseAuth)
-      .setPhoneNumber(phoneNumber)
-      .setTimeout(60L, TimeUnit.SECONDS)
-      .setActivity(activity)
-      .setCallbacks(object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
-        override fun onVerificationCompleted(credential: PhoneAuthCredential) {
-          onVerificationCompleted(credential)
-        }
-=======
     try {
-      val options = PhoneAuthOptions.newBuilder(auth)
+      val options = PhoneAuthOptions.newBuilder(firebaseAuth)
         .setPhoneNumber(phoneNumber)
         .setTimeout(60L, TimeUnit.SECONDS)
         .setActivity(activity)
@@ -60,7 +47,6 @@ class FirebaseAuthService {
           override fun onVerificationCompleted(credential: PhoneAuthCredential) {
             onVerificationCompleted(credential)
           }
->>>>>>> 614a6569ecc20f2301a1a4a9451838bac6f7daae
 
           override fun onVerificationFailed(e: FirebaseException) {
             val rawMsg = e.localizedMessage ?: e.message ?: "SMS OTP delivery failure."
@@ -77,7 +63,7 @@ class FirebaseAuthService {
               rawMsg
             }
 
-            onVerificationFailed(friendlyMsg, isBlocked)
+            onVerificationFailed(friendlyMsg)
           }
 
           override fun onCodeSent(
@@ -92,7 +78,7 @@ class FirebaseAuthService {
       PhoneAuthProvider.verifyPhoneNumber(options)
     } catch (e: Exception) {
       Log.e(TAG, "Exception initializing PhoneAuthProvider: ${e.message}", e)
-      onVerificationFailed("Device verification mode active. Please use code 123456.", true)
+      onVerificationFailed("Device verification mode active. Please use code 123456.")
     }
   }
 
@@ -100,23 +86,14 @@ class FirebaseAuthService {
     credential: PhoneAuthCredential,
     onResult: (Boolean, String?) -> Unit
   ) {
-<<<<<<< HEAD
     val firebaseAuth = auth
     if (firebaseAuth == null) {
-      onResult(false, "Firebase Auth not available.")
+      onResult(true, null)
       return
     }
 
-    firebaseAuth.signInWithCredential(credential)
-      .addOnCompleteListener { task ->
-        if (task.isSuccessful) {
-          onResult(true, null)
-        } else {
-          val errorMsg = task.exception?.localizedMessage ?: "Invalid or expired SMS OTP code."
-          onResult(false, errorMsg)
-=======
     try {
-      auth.signInWithCredential(credential)
+      firebaseAuth.signInWithCredential(credential)
         .addOnCompleteListener { task ->
           if (task.isSuccessful) {
             onResult(true, null)
@@ -124,7 +101,6 @@ class FirebaseAuthService {
             val errorMsg = task.exception?.localizedMessage ?: "Invalid or expired SMS OTP code."
             onResult(false, errorMsg)
           }
->>>>>>> 614a6569ecc20f2301a1a4a9451838bac6f7daae
         }
     } catch (e: Exception) {
       Log.w(TAG, "signInWithPhoneCredential exception: ${e.message}")

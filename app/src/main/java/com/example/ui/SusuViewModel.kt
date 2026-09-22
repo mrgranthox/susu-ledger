@@ -18,7 +18,9 @@ import com.example.data.remote.SendWhatsAppMessageRequest
 import com.example.data.remote.SusuApiClient
 import com.example.data.repository.SusuRepository
 import com.example.data.repository.VerificationReport
+import com.example.util.ContactsHelper
 import com.example.util.CryptoUtils
+import com.example.util.DeviceContact
 import com.example.util.GhanaPhoneUtils
 import com.example.util.SessionManager
 import kotlinx.coroutines.delay
@@ -265,6 +267,69 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   private val _showPairingSheet = MutableStateFlow(false)
   val showPairingSheet: StateFlow<Boolean> = _showPairingSheet.asStateFlow()
 
+  // Navigation & Subscreen Persistence
+  private val _currentNavIndex = MutableStateFlow(sessionManager.lastNavIndex)
+  val currentNavIndex: StateFlow<Int> = _currentNavIndex.asStateFlow()
+
+  private val _currentSubscreen = MutableStateFlow(sessionManager.activeSubscreen)
+  val currentSubscreen: StateFlow<String> = _currentSubscreen.asStateFlow()
+
+  fun setNavIndex(index: Int) {
+    _currentNavIndex.value = index
+    sessionManager.lastNavIndex = index
+    sessionManager.recordActivity()
+  }
+
+  fun openSubscreen(subscreen: String) {
+    _currentSubscreen.value = subscreen
+    sessionManager.activeSubscreen = subscreen
+    sessionManager.recordActivity()
+  }
+
+  fun closeSubscreen() {
+    _currentSubscreen.value = ""
+    sessionManager.activeSubscreen = ""
+    sessionManager.recordActivity()
+  }
+
+  // Device Contacts State & Loader
+  private val _deviceContacts = MutableStateFlow<List<DeviceContact>>(emptyList())
+  val deviceContacts: StateFlow<List<DeviceContact>> = _deviceContacts.asStateFlow()
+
+  private val _isLoadingContacts = MutableStateFlow(false)
+  val isLoadingContacts: StateFlow<Boolean> = _isLoadingContacts.asStateFlow()
+
+  fun loadDeviceContacts(contentResolver: android.content.ContentResolver) {
+    viewModelScope.launch {
+      _isLoadingContacts.value = true
+      try {
+        val list = ContactsHelper.readDeviceContacts(contentResolver)
+        _deviceContacts.value = list
+      } catch (e: Exception) {
+        e.printStackTrace()
+      } finally {
+        _isLoadingContacts.value = false
+      }
+    }
+  }
+
+  fun importContactsAsMembers(contacts: List<DeviceContact>, targetGroupId: String? = null) {
+    val gid = targetGroupId ?: _selectedGroupId.value
+    if (gid.isBlank()) return
+
+    viewModelScope.launch {
+      var importedCount = 0
+      contacts.forEach { contact ->
+        if (contact.name.isNotBlank()) {
+          val cleanPhone = if (contact.formattedPhone.isNotBlank()) contact.formattedPhone else contact.rawPhone
+          repository.addMember(gid, contact.name.trim(), cleanPhone.trim())
+          importedCount++
+        }
+      }
+      _toastMessage.value = "Imported $importedCount members from contacts."
+    }
+  }
+
   // Pairing code countdown (dynamically initialized)
   private val _pairingSecondsRemaining = MutableStateFlow(900) // 15 mins remaining
   val pairingSecondsRemaining: StateFlow<Int> = _pairingSecondsRemaining.asStateFlow()
@@ -322,6 +387,37 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         }
       }
     }
+
+    // Auto-recover session if database has registered groups
+    viewModelScope.launch {
+      try {
+        val allGroups = repository.getAllGroupsOnce()
+        if (allGroups.isNotEmpty()) {
+          val firstGroup = allGroups.first()
+          if (!sessionManager.isOnboarded) {
+            sessionManager.isOnboarded = true
+            sessionManager.activeGroupId = firstGroup.id
+            _isOnboardingCompleted.value = true
+          }
+          val treasurer = repository.getIdentityById(firstGroup.treasurerId)
+          if (sessionManager.loggedInPhone.isBlank() && treasurer != null) {
+            sessionManager.loggedInPhone = treasurer.phone
+            sessionManager.officerName = treasurer.displayName
+            _userPhone.value = treasurer.phone
+          }
+          val user = repository.getUserById(firstGroup.treasurerId)
+          if (user != null && sessionManager.pinHash.isBlank()) {
+            sessionManager.pinHash = user.pinHash
+            sessionManager.pinSalt = firstGroup.treasurerId
+          }
+          if (sessionManager.loggedInPhone.isNotBlank()) {
+            _isAuthenticated.value = true
+          }
+        }
+      } catch (e: Exception) {
+        // Safe fallback
+      }
+    }
   }
 
   fun completeOnboarding(
@@ -343,6 +439,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
           members = members,
           treasurerPin = treasurerPin
         )
+        val resolvedPin = if (treasurerPin.isNotBlank()) treasurerPin else "1234"
         _selectedGroupId.value = newGroup.id
         _userPhone.value = treasurerPhone
         _userRole.value = "treasurer"
@@ -356,8 +453,9 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
           role = "treasurer",
           name = treasurerName,
           groupId = newGroup.id,
-          pinHash = if (treasurerPin.isNotBlank()) CryptoUtils.hashPin(treasurerPin, newGroup.treasurerId) else "",
-          pinSalt = newGroup.treasurerId
+          pinHash = CryptoUtils.hashPin(resolvedPin, newGroup.treasurerId),
+          pinSalt = newGroup.treasurerId,
+          rawPin = resolvedPin
         )
 
         _toastMessage.value = "Group '${newGroup.name}' created successfully!"
@@ -375,6 +473,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   fun unlockApp() {
     _isAppLocked.value = false
     sessionManager.isAppLocked = false
+    sessionManager.recordActivity()
   }
 
   fun lockApp() {
@@ -382,10 +481,32 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     sessionManager.isAppLocked = true
   }
 
+  fun handleAppStop() {
+    sessionManager.recordActivity()
+  }
+
+  fun handleAppResume() {
+    if (_isAuthenticated.value && sessionManager.shouldLockAppAfterInactivity()) {
+      lockApp()
+    } else {
+      sessionManager.recordActivity()
+    }
+  }
+
   fun verifyOfficerPin(enteredPin: String, onResult: (Boolean) -> Unit) {
     viewModelScope.launch {
       if (enteredPin.length != 4) {
         onResult(false)
+        return@launch
+      }
+
+      sessionManager.recordActivity()
+
+      // 0. Direct match against saved session PIN
+      val savedPin = sessionManager.savedPin
+      if (savedPin.isNotBlank() && enteredPin == savedPin) {
+        unlockApp()
+        onResult(true)
         return@launch
       }
 
@@ -396,6 +517,8 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         val valid = CryptoUtils.verifyPin(enteredPin, cachedHash, cachedSalt) ||
             CryptoUtils.verifyPin(enteredPin, cachedHash, "")
         if (valid) {
+          sessionManager.savedPin = enteredPin
+          unlockApp()
           onResult(true)
           return@launch
         }
@@ -403,10 +526,12 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
 
       // 2. Query Room DB for current officer
       val phone = _userPhone.value.ifBlank { sessionManager.loggedInPhone }
-      val identity = if (phone.isNotBlank()) {
-        repository.getIdentityByPhone(phone)
+      val cleanDigits = phone.filter { it.isDigit() }.takeLast(9)
+      val allIdentities = repository.getAllIdentitiesOnce()
+      val identity = if (cleanDigits.length >= 9) {
+        allIdentities.find { it.phone.filter { c -> c.isDigit() }.endsWith(cleanDigits) }
       } else {
-        repository.getAllIdentitiesOnce().firstOrNull()
+        allIdentities.firstOrNull()
       }
 
       if (identity != null) {
@@ -417,26 +542,16 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
           if (valid) {
             sessionManager.pinHash = user.pinHash
             sessionManager.pinSalt = identity.id
+            sessionManager.savedPin = enteredPin
+            unlockApp()
             onResult(true)
             return@launch
           }
         }
       }
 
-      // 3. Fallback demo verification if user has not yet customized PIN (1234)
-      val defaultValid = (enteredPin == "1234")
-      if (defaultValid && identity != null) {
-        val defaultHash = CryptoUtils.hashPin("1234", identity.id)
-        val user = repository.getUserById(identity.id) ?: UserEntity(
-          id = identity.id,
-          pinHash = defaultHash,
-          role = "treasurer"
-        )
-        repository.insertUser(user)
-        sessionManager.pinHash = user.pinHash
-        sessionManager.pinSalt = identity.id
-      }
-      onResult(defaultValid)
+      // PIN mismatch — reject without arbitrary bypass
+      onResult(false)
     }
   }
 
@@ -455,15 +570,11 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         return@launch
       }
 
-      val formattedPhone = CryptoUtils.formatGhanaPhone(phone)
-      
-      // Look up identity by phone number from database
-      val identity = repository.getIdentityByPhone(formattedPhone)
-        ?: repository.getIdentityByPhone(phone)
-        ?: run {
-          val all = database.susuDao().getAllIdentities().firstOrNull() ?: emptyList()
-          all.find { it.phone.filter { c -> c.isDigit() }.endsWith(cleanDigits.takeLast(9)) }
-        }
+      val last9 = cleanDigits.takeLast(9)
+      val allIdentities = repository.getAllIdentitiesOnce()
+      val identity = allIdentities.find {
+        it.phone.filter { c -> c.isDigit() }.endsWith(last9)
+      } ?: repository.getIdentityByPhone(phone)
 
       if (identity == null) {
         val err = "No registered officer account found for $phone. Please create your Susu group first."
@@ -472,18 +583,17 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         return@launch
       }
 
-      val user = repository.getUserById(identity.id) ?: run {
-        val defaultUser = UserEntity(
-          id = identity.id,
-          pinHash = CryptoUtils.hashPin("1234", identity.id),
-          role = if (role.isNotBlank()) role else "treasurer"
-        )
-        repository.insertUser(defaultUser)
-        defaultUser
+      val user = repository.getUserById(identity.id)
+      if (user == null) {
+        val err = "Officer credentials not initialized. Please verify your phone."
+        _toastMessage.value = err
+        onResult(false, err)
+        return@launch
       }
 
       val isPinValid = CryptoUtils.verifyPin(pin, user.pinHash, identity.id) || 
-                       CryptoUtils.verifyPin(pin, user.pinHash, "")
+                       CryptoUtils.verifyPin(pin, user.pinHash, "") ||
+                       (sessionManager.savedPin.isNotBlank() && pin == sessionManager.savedPin)
 
       if (!isPinValid) {
         val err = "Incorrect 4-digit security PIN. Access denied."
@@ -508,11 +618,51 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         name = identity.displayName,
         groupId = group?.id ?: "",
         pinHash = user.pinHash,
-        pinSalt = identity.id
+        pinSalt = identity.id,
+        rawPin = pin
       )
 
       _toastMessage.value = "Welcome back, ${identity.displayName}!"
       onResult(true, null)
+    }
+  }
+
+  fun resetOfficerPin(
+    phone: String,
+    newPin: String,
+    onResult: (success: Boolean, message: String) -> Unit
+  ) {
+    viewModelScope.launch {
+      if (newPin.length != 4 || !newPin.all { it.isDigit() }) {
+        onResult(false, "PIN must be exactly 4 digits.")
+        return@launch
+      }
+
+      val cleanDigits = phone.filter { it.isDigit() }.takeLast(9)
+      val allIdentities = repository.getAllIdentitiesOnce()
+      val identity = allIdentities.find { it.phone.filter { c -> c.isDigit() }.endsWith(cleanDigits) }
+        ?: repository.getIdentityByPhone(phone)
+
+      if (identity == null) {
+        onResult(false, "No account found for phone $phone.")
+        return@launch
+      }
+
+      val newHash = CryptoUtils.hashPin(newPin, identity.id)
+      val existingUser = repository.getUserById(identity.id)
+      val updatedUser = existingUser?.copy(pinHash = newHash) ?: UserEntity(
+        id = identity.id,
+        pinHash = newHash,
+        role = "treasurer"
+      )
+      repository.insertUser(updatedUser)
+
+      sessionManager.pinHash = newHash
+      sessionManager.pinSalt = identity.id
+      sessionManager.savedPin = newPin
+
+      _toastMessage.value = "Security PIN updated successfully."
+      onResult(true, "Security PIN updated successfully.")
     }
   }
 

@@ -1070,6 +1070,8 @@ class SusuRepository(private val dao: SusuDao) {
 
   suspend fun insertUser(user: UserEntity) = dao.insertUser(user)
 
+  suspend fun getIdentityById(id: String): IdentityEntity? = dao.getIdentityById(id)
+
   suspend fun getGroupByTreasurer(treasurerId: String): GroupEntity? = dao.getGroupByTreasurer(treasurerId)
 
   suspend fun getAllGroupsOnce(): List<GroupEntity> = dao.getAllGroupsOnce()
