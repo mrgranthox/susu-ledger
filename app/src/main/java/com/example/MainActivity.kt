@@ -61,6 +61,7 @@ import com.example.ui.screens.CycleDetailScreen
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.FeatureWalkthroughScreen
 import com.example.ui.screens.HistoryScreen
+import com.example.ui.screens.LedgerScreen
 import com.example.ui.screens.MembersScreen
 import com.example.ui.screens.MoreSettingsScreen
 import com.example.ui.screens.NewCycleScreen
@@ -72,13 +73,14 @@ import com.example.ui.theme.BorderGrey
 import com.example.ui.theme.ForestGreenLightFill
 import com.example.ui.theme.ForestGreenPrimary
 import com.example.ui.theme.LineIconBlack
+import androidx.fragment.app.FragmentActivity
 import com.example.ui.theme.LineIconGrey
 import com.example.ui.theme.PureWhite
 import com.example.ui.theme.SusuLedgerTheme
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
   private val viewModel: SusuViewModel by viewModels()
 
@@ -90,6 +92,8 @@ class MainActivity : ComponentActivity() {
     setContent {
       SusuLedgerTheme {
         val isAuthenticated by viewModel.isAuthenticated.collectAsState()
+        val isOnboardingCompleted by viewModel.isOnboardingCompleted.collectAsState()
+        val isAppLocked by viewModel.isAppLocked.collectAsState()
         val groups by viewModel.groups.collectAsState()
         val selectedGroupId by viewModel.selectedGroupId.collectAsState()
         val activeCycle by viewModel.activeCycle.collectAsState()
@@ -117,6 +121,10 @@ class MainActivity : ComponentActivity() {
         val pairingSecondsRemaining by viewModel.pairingSecondsRemaining.collectAsState()
         val toastMessage by viewModel.toastMessage.collectAsState()
 
+        val ledgerEntries by viewModel.ledgerEntries.collectAsState()
+        val verificationReport by viewModel.verificationReport.collectAsState()
+        val isVerifying by viewModel.isVerifying.collectAsState()
+
         val snackbarHostState = remember { SnackbarHostState() }
 
         // Navigation state: [Home] [Members] [History] [More]
@@ -131,16 +139,15 @@ class MainActivity : ComponentActivity() {
         var showCycleDetailScreen by remember { mutableStateOf(false) }
         var showNewCycleScreen by remember { mutableStateOf(false) }
         var showWhatsAppSimulator by remember { mutableStateOf(false) }
+        var showLedgerScreen by remember { mutableStateOf(false) }
 
-        // Biometric / PIN App Lock state
-        var isAppLocked by remember { mutableStateOf(false) }
         val lifecycleOwner = LocalLifecycleOwner.current
 
         DisposableEffect(lifecycleOwner) {
           val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
               if (isAuthenticated) {
-                isAppLocked = true
+                viewModel.lockApp()
               }
             }
           }
@@ -165,9 +172,10 @@ class MainActivity : ComponentActivity() {
 
         // Global Back Navigation Handling
         BackHandler(
-          enabled = showWhatsAppSimulator || showCycleDetailScreen || showNewCycleScreen || currentNavIndex != 0 || (!isAuthenticated && (showLoginScreen || showWalkthroughScreen || !showSplashScreen))
+          enabled = showLedgerScreen || showWhatsAppSimulator || showCycleDetailScreen || showNewCycleScreen || currentNavIndex != 0 || (!isAuthenticated && (showLoginScreen || showWalkthroughScreen || !showSplashScreen))
         ) {
           when {
+            showLedgerScreen -> showLedgerScreen = false
             showWhatsAppSimulator -> showWhatsAppSimulator = false
             showCycleDetailScreen -> showCycleDetailScreen = false
             showNewCycleScreen -> showNewCycleScreen = false
@@ -186,74 +194,97 @@ class MainActivity : ComponentActivity() {
           color = PureWhite
         ) {
           if (!isAuthenticated) {
-            when {
-              showSplashScreen -> {
-                SplashScreen(
-                  onProceed = {
-                    showSplashScreen = false
-                    showWalkthroughScreen = true
-                  }
-                )
-              }
-              showWalkthroughScreen -> {
-                FeatureWalkthroughScreen(
-                  onComplete = {
-                    showWalkthroughScreen = false
-                    showLoginScreen = false
-                  },
-                  onSkip = {
-                    showWalkthroughScreen = false
-                    showLoginScreen = false
-                  }
-                )
-              }
-              showLoginScreen -> {
-                AuthOtpScreen(
-                  onAuthenticate = { phone, pin, role, onResult ->
-                    viewModel.authenticateOfficer(phone, pin, role) { success, err ->
-                      if (success) {
-                        showLoginScreen = false
-                        isAppLocked = false
-                      }
-                      onResult(success, err)
+            if (isOnboardingCompleted) {
+              // Returning officer session: Directly present PIN / Biometric login to prevent starting from scratch
+              AuthOtpScreen(
+                onAuthenticate = { phone, pin, role, onResult ->
+                  viewModel.authenticateOfficer(phone, pin, role) { success, err ->
+                    if (success) {
+                      showLoginScreen = false
+                      viewModel.unlockApp()
                     }
-                  },
-                  onNavigateToRegister = {
-                    showLoginScreen = false
+                    onResult(success, err)
                   }
-                )
-              }
-              else -> {
-                // App-First Clean Slate Onboarding Flow
-                OnboardingFlowScreen(
-                  pairingCode = pairingCode,
-                  onCompleteOnboarding = { groupName, amount, treasurerPhone, treasurerName, initialMembers, treasurerPin ->
-                    val memberPairs = initialMembers.map { it.name to it.phone }
-                    viewModel.completeOnboarding(
-                      groupName = groupName,
-                      amount = amount,
-                      treasurerPhone = treasurerPhone,
-                      treasurerName = treasurerName,
-                      members = memberPairs,
-                      treasurerPin = treasurerPin
-                    )
-                    isAppLocked = false
-                  },
-                  onSwitchToLogin = {
-                    showLoginScreen = true
-                  }
-                )
+                },
+                onNavigateToRegister = {
+                  showLoginScreen = false
+                  showSplashScreen = false
+                  showWalkthroughScreen = false
+                }
+              )
+            } else {
+              when {
+                showSplashScreen -> {
+                  SplashScreen(
+                    onProceed = {
+                      showSplashScreen = false
+                      showWalkthroughScreen = true
+                    }
+                  )
+                }
+                showWalkthroughScreen -> {
+                  FeatureWalkthroughScreen(
+                    onComplete = {
+                      showWalkthroughScreen = false
+                      showLoginScreen = false
+                    },
+                    onSkip = {
+                      showWalkthroughScreen = false
+                      showLoginScreen = false
+                    }
+                  )
+                }
+                showLoginScreen -> {
+                  AuthOtpScreen(
+                    onAuthenticate = { phone, pin, role, onResult ->
+                      viewModel.authenticateOfficer(phone, pin, role) { success, err ->
+                        if (success) {
+                          showLoginScreen = false
+                          viewModel.unlockApp()
+                        }
+                        onResult(success, err)
+                      }
+                    },
+                    onNavigateToRegister = {
+                      showLoginScreen = false
+                    }
+                  )
+                }
+                else -> {
+                  // App-First Clean Slate Onboarding Flow
+                  OnboardingFlowScreen(
+                    pairingCode = pairingCode,
+                    onCompleteOnboarding = { groupName, amount, treasurerPhone, treasurerName, initialMembers, treasurerPin ->
+                      val memberPairs = initialMembers.map { it.name to it.phone }
+                      viewModel.completeOnboarding(
+                        groupName = groupName,
+                        amount = amount,
+                        treasurerPhone = treasurerPhone,
+                        treasurerName = treasurerName,
+                        members = memberPairs,
+                        treasurerPin = treasurerPin
+                      )
+                      viewModel.unlockApp()
+                    },
+                    onSwitchToLogin = {
+                      showLoginScreen = true
+                    }
+                  )
+                }
               }
             }
           } else if (isAppLocked) {
             // App Lock Screen: Requires Biometric or 4-digit PIN
             AppLockScreen(
+              groupName = groups.find { it.id == selectedGroupId }?.name ?: "Susu Group",
+              onVerifyPin = { pin, onResult ->
+                viewModel.verifyOfficerPin(pin, onResult)
+              },
               onUnlockSuccess = {
-                isAppLocked = false
+                viewModel.unlockApp()
               },
               onSignOut = {
                 viewModel.logout()
-                isAppLocked = false
                 showSplashScreen = true
                 showWalkthroughScreen = false
               }
@@ -320,6 +351,17 @@ class MainActivity : ComponentActivity() {
                   onSendWeeklyReminder = { viewModel.sendWeeklyCollectionReminder() },
                   onSendUnpaidNudges = { viewModel.sendTargetedUnpaidNudges() },
                   onSendSundayDigest = { viewModel.sendSundaySummaryDigest() }
+                )
+              }
+
+              showLedgerScreen -> {
+                LedgerScreen(
+                  payments = payments,
+                  ledgerEntries = ledgerEntries,
+                  verificationReport = verificationReport,
+                  isVerifying = isVerifying,
+                  onVerifyIntegrityClick = { viewModel.runIntegrityCheck() },
+                  onBackClick = { showLedgerScreen = false }
                 )
               }
 
@@ -463,11 +505,11 @@ class MainActivity : ComponentActivity() {
                         onDirectPaymentClick = { viewModel.openPaymentSheetDirect() },
                         onViewAllPendingClick = { currentNavIndex = 1 },
                         onOpenCycleDetail = { showCycleDetailScreen = true },
+                        onOpenLedger = { showLedgerScreen = true },
                         onOpenWhatsAppSimulator = { showWhatsAppSimulator = true },
-                        onLockApp = { isAppLocked = true },
+                        onLockApp = { viewModel.lockApp() },
                         onSignOut = {
                           viewModel.logout()
-                          isAppLocked = false
                           showSplashScreen = true
                           showWalkthroughScreen = false
                         }
@@ -504,18 +546,16 @@ class MainActivity : ComponentActivity() {
                         onOpenWhatsAppSimulator = { showWhatsAppSimulator = true },
                         onSignOut = {
                           viewModel.logout()
-                          isAppLocked = false
                           showSplashScreen = true
                           showWalkthroughScreen = false
                         },
                         onDeleteAccount = {
                           viewModel.deleteAccount()
-                          isAppLocked = false
                           showSplashScreen = true
                           showWalkthroughScreen = false
                         },
                         onLockApp = {
-                          isAppLocked = true
+                          viewModel.lockApp()
                         },
                         onBackClick = { currentNavIndex = 0 }
                       )
@@ -589,6 +629,9 @@ class MainActivity : ComponentActivity() {
                 title = actionTitle,
                 subtitle = actionDesc,
                 onDismiss = { pendingSensitiveAction = null },
+                onVerifyPin = { pin, onResult ->
+                  viewModel.verifyOfficerPin(pin, onResult)
+                },
                 onAuthorized = {
                   pendingSensitiveAction = null
                   onApproved()

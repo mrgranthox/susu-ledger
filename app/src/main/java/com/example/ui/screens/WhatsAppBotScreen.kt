@@ -3,6 +3,7 @@ package com.example.ui.screens
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -12,9 +13,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,6 +38,8 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Refresh
@@ -112,6 +118,7 @@ fun WhatsAppBotScreen(
   var inputMessage by remember { mutableStateOf("") }
   val listState = rememberLazyListState()
   val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.US) }
+  var showBotControls by remember { mutableStateOf(false) }
 
   // Auto scroll to bottom when new messages arrive
   LaunchedEffect(messages.size) {
@@ -121,24 +128,36 @@ fun WhatsAppBotScreen(
   }
 
   Scaffold(
+    contentWindowInsets = WindowInsets(0, 0, 0, 0),
     topBar = {
       StandardNavTopBar(
         title = "WhatsApp Bot Channel",
         subtitle = groupName,
         onBackClick = onBack,
         actions = {
+          IconButton(
+            onClick = { showBotControls = !showBotControls },
+            modifier = Modifier.size(34.dp)
+          ) {
+            Icon(
+              imageVector = if (showBotControls) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+              contentDescription = "Toggle Tools",
+              tint = ForestGreenPrimary,
+              modifier = Modifier.size(20.dp)
+            )
+          }
           Button(
             onClick = onOpenPairing,
             shape = RoundedCornerShape(8.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF1F5F9)),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
             modifier = Modifier
               .height(34.dp)
               .testTag("whatsapp_pair_btn")
           ) {
             Icon(imageVector = Icons.Default.Smartphone, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(14.dp))
             Spacer(modifier = Modifier.width(4.dp))
-            Text("Bot Pairing", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+            Text("Pairing", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
           }
         }
       )
@@ -149,21 +168,25 @@ fun WhatsAppBotScreen(
         .fillMaxSize()
         .background(WhatsAppChatBg)
         .padding(paddingValues)
+        .imePadding()
     ) {
-      // Top Live Infrastructure & Pairing Status Card
+      // Top Live Infrastructure & Pairing Status Card (Collapsible)
       Surface(
         color = PureWhite,
         border = BorderStroke(1.dp, BorderGrey),
         modifier = Modifier.fillMaxWidth()
       ) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-          // Bot Status Row
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+          // Bot Status Row (Tappable header to expand/collapse)
           Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+              .fillMaxWidth()
+              .clickable { showBotControls = !showBotControls }
+              .padding(vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
           ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
               Box(
                 modifier = Modifier
                   .size(8.dp)
@@ -172,176 +195,203 @@ fun WhatsAppBotScreen(
               )
               Spacer(modifier = Modifier.width(6.dp))
               Text(
-                text = "WhatsApp Bot Gateway: ACTIVE",
+                text = "WhatsApp Gateway: ACTIVE",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 color = ForestGreenPrimary
               )
+              if (pairingCode.isNotBlank()) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                  text = "• $pairingCode",
+                  fontSize = 11.sp,
+                  fontWeight = FontWeight.SemiBold,
+                  fontFamily = FontFamily.Monospace,
+                  color = TextSecondary
+                )
+              }
             }
 
-            Text(
-              text = "Live Channel",
-              fontSize = 10.sp,
-              color = TextSecondary
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Text(
+                text = if (showBotControls) "Hide Tools" else "Show Tools",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = ForestGreenPrimary
+              )
+              Icon(
+                imageVector = if (showBotControls) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = null,
+                tint = ForestGreenPrimary,
+                modifier = Modifier.size(16.dp)
+              )
+            }
           }
 
-          Spacer(modifier = Modifier.height(8.dp))
+          AnimatedVisibility(visible = showBotControls) {
+            Column {
+              Spacer(modifier = Modifier.height(6.dp))
 
-          // Dynamic Pairing Code Summary Box
-          if (pairingCode.isNotBlank()) {
-            Surface(
-              shape = RoundedCornerShape(8.dp),
-              color = Color(0xFFF8FAFC),
-              border = BorderStroke(1.dp, BorderGrey),
-              modifier = Modifier.fillMaxWidth()
-            ) {
-              Row(
-                modifier = Modifier
-                  .fillMaxWidth()
-                  .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-              ) {
-                Column {
-                  Text(
-                    text = "ACTIVE BOT PAIRING CODE",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.6.sp,
-                    color = TextSecondary
-                  )
-                  Text(
-                    text = pairingCode,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Black,
-                    fontFamily = FontFamily.Monospace,
-                    color = ForestGreenPrimary
-                  )
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                  IconButton(
-                    onClick = {
-                      clipboard.setText(AnnotatedString(pairingCode))
-                      Toast.makeText(context, "Pairing code copied!", Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.size(32.dp)
+              // Dynamic Pairing Code Summary Box
+              if (pairingCode.isNotBlank()) {
+                Surface(
+                  shape = RoundedCornerShape(8.dp),
+                  color = Color(0xFFF8FAFC),
+                  border = BorderStroke(1.dp, BorderGrey),
+                  modifier = Modifier.fillMaxWidth()
+                ) {
+                  Row(
+                    modifier = Modifier
+                      .fillMaxWidth()
+                      .padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                   ) {
-                    Icon(
-                      imageVector = Icons.Default.ContentCopy,
-                      contentDescription = "Copy code",
-                      tint = TextSecondary,
-                      modifier = Modifier.size(16.dp)
-                    )
-                  }
+                    Column {
+                      Text(
+                        text = "ACTIVE PAIRING CODE",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.6.sp,
+                        color = TextSecondary
+                      )
+                      Text(
+                        text = pairingCode,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        color = ForestGreenPrimary
+                      )
+                    }
 
-                  TextButton(
-                    onClick = {
-                      val intent = Intent(Intent.ACTION_VIEW).apply {
-                        data = Uri.parse("https://api.whatsapp.com/send?text=${Uri.encode("PAIR:$pairingCode")}")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                      IconButton(
+                        onClick = {
+                          clipboard.setText(AnnotatedString(pairingCode))
+                          Toast.makeText(context, "Pairing code copied!", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.size(30.dp)
+                      ) {
+                        Icon(
+                          imageVector = Icons.Default.ContentCopy,
+                          contentDescription = "Copy code",
+                          tint = TextSecondary,
+                          modifier = Modifier.size(14.dp)
+                        )
                       }
-                      try {
-                        context.startActivity(intent)
-                      } catch (e: Exception) {
-                        Toast.makeText(context, "Copied PAIR:$pairingCode", Toast.LENGTH_SHORT).show()
+
+                      TextButton(
+                        onClick = {
+                          val intent = Intent(Intent.ACTION_VIEW).apply {
+                            data = Uri.parse("https://api.whatsapp.com/send?text=${Uri.encode("PAIR:$pairingCode")}")
+                          }
+                          try {
+                            context.startActivity(intent)
+                          } catch (e: Exception) {
+                            Toast.makeText(context, "Copied PAIR:$pairingCode", Toast.LENGTH_SHORT).show()
+                          }
+                        },
+                        modifier = Modifier.height(28.dp)
+                      ) {
+                        Icon(
+                          imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                          contentDescription = null,
+                          tint = WhatsAppGreen,
+                          modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Open WhatsApp", fontSize = 10.sp, color = WhatsAppGreen, fontWeight = FontWeight.Bold)
                       }
-                    },
-                    modifier = Modifier.height(30.dp)
-                  ) {
-                    Icon(
-                      imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                      contentDescription = null,
-                      tint = WhatsAppGreen,
-                      modifier = Modifier.size(12.dp)
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text("Pair in WhatsApp", fontSize = 11.sp, color = WhatsAppGreen, fontWeight = FontWeight.Bold)
+                    }
                   }
                 }
               }
-            }
-          }
 
-          Spacer(modifier = Modifier.height(10.dp))
+              Spacer(modifier = Modifier.height(8.dp))
 
-          // Outbound Broadcast Actions
-          Text(
-            text = "META BROADCAST DISPATCHES",
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.8.sp,
-            color = TextSecondary
-          )
+              // Outbound Broadcast Actions (LazyRow for zero horizontal clipping)
+              Text(
+                text = "META BROADCAST DISPATCHES",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.8.sp,
+                color = TextSecondary
+              )
 
-          Spacer(modifier = Modifier.height(6.dp))
+              Spacer(modifier = Modifier.height(4.dp))
 
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-          ) {
-            OutboundTriggerChip(
-              title = "Friday Reminder",
-              icon = Icons.Default.NotificationsActive,
-              onClick = onSendWeeklyReminder,
-              modifier = Modifier.weight(1f)
-            )
-            OutboundTriggerChip(
-              title = "Nudge Unpaid",
-              icon = Icons.Default.Campaign,
-              onClick = onSendUnpaidNudges,
-              modifier = Modifier.weight(1f)
-            )
-            OutboundTriggerChip(
-              title = "Sunday Digest",
-              icon = Icons.Default.Receipt,
-              onClick = onSendSundayDigest,
-              modifier = Modifier.weight(1f)
-            )
-          }
+              LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+              ) {
+                item {
+                  OutboundTriggerChip(
+                    title = "Friday Reminder",
+                    icon = Icons.Default.NotificationsActive,
+                    onClick = onSendWeeklyReminder
+                  )
+                }
+                item {
+                  OutboundTriggerChip(
+                    title = "Nudge Unpaid",
+                    icon = Icons.Default.Campaign,
+                    onClick = onSendUnpaidNudges
+                  )
+                }
+                item {
+                  OutboundTriggerChip(
+                    title = "Sunday Digest",
+                    icon = Icons.Default.Receipt,
+                    onClick = onSendSundayDigest
+                  )
+                }
+              }
 
-          if (members.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(10.dp))
-            Text(
-              text = "SELECT MEMBER RECIPIENT",
-              fontSize = 10.sp,
-              fontWeight = FontWeight.Bold,
-              letterSpacing = 0.8.sp,
-              color = TextSecondary
-            )
-            Spacer(modifier = Modifier.height(6.dp))
+              if (members.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                  text = "SELECT MEMBER RECIPIENT",
+                  fontSize = 9.sp,
+                  fontWeight = FontWeight.Bold,
+                  letterSpacing = 0.8.sp,
+                  color = TextSecondary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
 
-            LazyRow(
-              horizontalArrangement = Arrangement.spacedBy(8.dp),
-              modifier = Modifier.fillMaxWidth()
-            ) {
-              items(members, key = { it.id }) { member ->
-                val isSelected = (selectedMember?.id == member.id)
-                Surface(
-                  shape = RoundedCornerShape(20.dp),
-                  color = if (isSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
-                  border = BorderStroke(1.dp, if (isSelected) ForestGreenPrimary else BorderGrey),
-                  modifier = Modifier.clickable { selectedMember = member }
+                LazyRow(
+                  horizontalArrangement = Arrangement.spacedBy(8.dp),
+                  modifier = Modifier.fillMaxWidth()
                 ) {
-                  Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                  ) {
-                    Icon(
-                      imageVector = Icons.Default.AccountCircle,
-                      contentDescription = null,
-                      tint = if (isSelected) PureWhite else LineIconGrey,
-                      modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                      text = member.alias ?: member.phone,
-                      fontSize = 11.sp,
-                      fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                      color = if (isSelected) PureWhite else TextPrimary
-                    )
+                  items(members, key = { it.id }) { member ->
+                    val isSelected = (selectedMember?.id == member.id)
+                    Surface(
+                      shape = RoundedCornerShape(20.dp),
+                      color = if (isSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                      border = BorderStroke(1.dp, if (isSelected) ForestGreenPrimary else BorderGrey),
+                      modifier = Modifier.clickable { selectedMember = member }
+                    ) {
+                      Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                      ) {
+                        Icon(
+                          imageVector = Icons.Default.AccountCircle,
+                          contentDescription = null,
+                          tint = if (isSelected) PureWhite else LineIconGrey,
+                          modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                          text = member.alias ?: member.phone,
+                          fontSize = 11.sp,
+                          fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                          color = if (isSelected) PureWhite else TextPrimary
+                        )
+                      }
+                    }
                   }
                 }
+                Spacer(modifier = Modifier.height(4.dp))
               }
             }
           }
@@ -407,7 +457,9 @@ fun WhatsAppBotScreen(
       Surface(
         color = PureWhite,
         border = BorderStroke(1.dp, BorderGrey),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+          .fillMaxWidth()
+          .navigationBarsPadding()
       ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
           Row(

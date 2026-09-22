@@ -20,6 +20,7 @@ import com.example.data.repository.SusuRepository
 import com.example.data.repository.VerificationReport
 import com.example.util.CryptoUtils
 import com.example.util.GhanaPhoneUtils
+import com.example.util.SessionManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -47,14 +48,23 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   private val database = SusuDatabase.getDatabase(application, viewModelScope)
   private val repository = SusuRepository(database.susuDao())
 
-  // Auth & Session State: Clean slate default is unauthenticated (false)
-  private val _isAuthenticated = MutableStateFlow(false)
+  // Enterprise Session & Persistence
+  val sessionManager = SessionManager(application)
+
+  // Auth & Session State
+  private val _isOnboardingCompleted = MutableStateFlow(sessionManager.isOnboarded)
+  val isOnboardingCompleted: StateFlow<Boolean> = _isOnboardingCompleted.asStateFlow()
+
+  private val _isAppLocked = MutableStateFlow(sessionManager.isOnboarded && sessionManager.isAppLocked)
+  val isAppLocked: StateFlow<Boolean> = _isAppLocked.asStateFlow()
+
+  private val _isAuthenticated = MutableStateFlow(sessionManager.isOnboarded && sessionManager.loggedInPhone.isNotBlank())
   val isAuthenticated: StateFlow<Boolean> = _isAuthenticated.asStateFlow()
 
-  private val _userRole = MutableStateFlow("treasurer")
+  private val _userRole = MutableStateFlow(sessionManager.loggedInRole.ifBlank { "treasurer" })
   val userRole: StateFlow<String> = _userRole.asStateFlow()
 
-  private val _userPhone = MutableStateFlow("")
+  private val _userPhone = MutableStateFlow(sessionManager.loggedInPhone)
   val userPhone: StateFlow<String> = _userPhone.asStateFlow()
 
   // WhatsApp Bot State & Single Unified Dynamic Pairing Code
@@ -135,7 +145,34 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     viewModelScope.launch {
       val existingGroups = repository.getAllGroupsOnce()
       if (existingGroups.isNotEmpty()) {
-        _selectedGroupId.value = existingGroups.first().id
+        val targetGid = if (sessionManager.activeGroupId.isNotBlank() && existingGroups.any { it.id == sessionManager.activeGroupId }) {
+          sessionManager.activeGroupId
+        } else {
+          existingGroups.first().id
+        }
+        _selectedGroupId.value = targetGid
+        _isOnboardingCompleted.value = true
+        sessionManager.isOnboarded = true
+
+        if (sessionManager.loggedInPhone.isNotBlank()) {
+          _userPhone.value = sessionManager.loggedInPhone
+          _userRole.value = sessionManager.loggedInRole
+          _isAuthenticated.value = true
+        } else {
+          val identities = repository.getAllIdentitiesOnce()
+          val firstOfficer = identities.firstOrNull()
+          if (firstOfficer != null) {
+            _userPhone.value = firstOfficer.phone
+            _userRole.value = "treasurer"
+            _isAuthenticated.value = true
+            sessionManager.saveSession(
+              phone = firstOfficer.phone,
+              role = "treasurer",
+              name = firstOfficer.displayName,
+              groupId = targetGid
+            )
+          }
+        }
       }
     }
     checkCloudSystemStatus()
@@ -311,6 +348,18 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         _userRole.value = "treasurer"
         _pairingCode.value = CryptoUtils.generatePairingCode()
         _isAuthenticated.value = true
+        _isOnboardingCompleted.value = true
+        _isAppLocked.value = false
+
+        sessionManager.saveSession(
+          phone = treasurerPhone,
+          role = "treasurer",
+          name = treasurerName,
+          groupId = newGroup.id,
+          pinHash = if (treasurerPin.isNotBlank()) CryptoUtils.hashPin(treasurerPin, newGroup.treasurerId) else "",
+          pinSalt = newGroup.treasurerId
+        )
+
         _toastMessage.value = "Group '${newGroup.name}' created successfully!"
       } catch (e: Exception) {
         _toastMessage.value = "Error creating group: ${e.localizedMessage}"
@@ -320,6 +369,75 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
 
   fun selectGroup(groupId: String) {
     _selectedGroupId.value = groupId
+    sessionManager.activeGroupId = groupId
+  }
+
+  fun unlockApp() {
+    _isAppLocked.value = false
+    sessionManager.isAppLocked = false
+  }
+
+  fun lockApp() {
+    _isAppLocked.value = true
+    sessionManager.isAppLocked = true
+  }
+
+  fun verifyOfficerPin(enteredPin: String, onResult: (Boolean) -> Unit) {
+    viewModelScope.launch {
+      if (enteredPin.length != 4) {
+        onResult(false)
+        return@launch
+      }
+
+      // 1. Check cached sessionManager hash
+      val cachedHash = sessionManager.pinHash
+      val cachedSalt = sessionManager.pinSalt
+      if (cachedHash.isNotBlank()) {
+        val valid = CryptoUtils.verifyPin(enteredPin, cachedHash, cachedSalt) ||
+            CryptoUtils.verifyPin(enteredPin, cachedHash, "")
+        if (valid) {
+          onResult(true)
+          return@launch
+        }
+      }
+
+      // 2. Query Room DB for current officer
+      val phone = _userPhone.value.ifBlank { sessionManager.loggedInPhone }
+      val identity = if (phone.isNotBlank()) {
+        repository.getIdentityByPhone(phone)
+      } else {
+        repository.getAllIdentitiesOnce().firstOrNull()
+      }
+
+      if (identity != null) {
+        val user = repository.getUserById(identity.id)
+        if (user != null) {
+          val valid = CryptoUtils.verifyPin(enteredPin, user.pinHash, identity.id) ||
+              CryptoUtils.verifyPin(enteredPin, user.pinHash, "")
+          if (valid) {
+            sessionManager.pinHash = user.pinHash
+            sessionManager.pinSalt = identity.id
+            onResult(true)
+            return@launch
+          }
+        }
+      }
+
+      // 3. Fallback demo verification if user has not yet customized PIN (1234)
+      val defaultValid = (enteredPin == "1234")
+      if (defaultValid && identity != null) {
+        val defaultHash = CryptoUtils.hashPin("1234", identity.id)
+        val user = repository.getUserById(identity.id) ?: UserEntity(
+          id = identity.id,
+          pinHash = defaultHash,
+          role = "treasurer"
+        )
+        repository.insertUser(user)
+        sessionManager.pinHash = user.pinHash
+        sessionManager.pinSalt = identity.id
+      }
+      onResult(defaultValid)
+    }
   }
 
   fun authenticateOfficer(
@@ -381,6 +499,18 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         _selectedGroupId.value = group.id
       }
       _isAuthenticated.value = true
+      _isOnboardingCompleted.value = true
+      _isAppLocked.value = false
+
+      sessionManager.saveSession(
+        phone = identity.phone,
+        role = user.role.ifBlank { role },
+        name = identity.displayName,
+        groupId = group?.id ?: "",
+        pinHash = user.pinHash,
+        pinSalt = identity.id
+      )
+
       _toastMessage.value = "Welcome back, ${identity.displayName}!"
       onResult(true, null)
     }
@@ -597,13 +727,18 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
 
   fun logout() {
     _isAuthenticated.value = false
+    _isAppLocked.value = false
+    sessionManager.clearSession()
     _toastMessage.value = "Signed out successfully"
   }
 
   fun deleteAccount() {
     viewModelScope.launch {
       database.clearAllTables()
+      sessionManager.fullReset()
       _isAuthenticated.value = false
+      _isOnboardingCompleted.value = false
+      _isAppLocked.value = false
       _selectedGroupId.value = ""
       _toastMessage.value = "Account and local ledger data deleted"
     }

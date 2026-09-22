@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -34,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.BorderGrey
@@ -52,7 +54,9 @@ fun StandardNavTopBar(
   Surface(
     color = PureWhite,
     tonalElevation = 0.dp,
-    modifier = modifier.fillMaxWidth()
+    modifier = modifier
+      .fillMaxWidth()
+      .statusBarsPadding()
   ) {
     Row(
       modifier = Modifier
@@ -92,13 +96,15 @@ fun StandardNavTopBar(
           Spacer(modifier = Modifier.width(6.dp))
         }
 
-        Column {
+        Column(modifier = Modifier.weight(1f, fill = false)) {
           Text(
             text = title,
             style = MaterialTheme.typography.titleLarge.copy(
               fontWeight = FontWeight.Bold,
               color = TextPrimary
-            )
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
           )
           if (!subtitle.isNull_or_blank()) {
             Text(
@@ -106,7 +112,9 @@ fun StandardNavTopBar(
               style = MaterialTheme.typography.bodySmall.copy(
                 color = TextSecondary,
                 fontSize = 12.sp
-              )
+              ),
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis
             )
           }
         }

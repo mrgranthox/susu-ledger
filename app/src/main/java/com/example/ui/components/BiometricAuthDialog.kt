@@ -74,6 +74,7 @@ fun BiometricAuthDialog(
   title: String,
   subtitle: String,
   operationTag: String = "SENSITIVE_OPERATION",
+  onVerifyPin: ((enteredPin: String, onResult: (Boolean) -> Unit) -> Unit)? = null,
   onDismiss: () -> Unit,
   onAuthorized: (methodUsed: String) -> Unit
 ) {
@@ -369,13 +370,23 @@ fun BiometricAuthDialog(
                   val newPin = enteredPin + digit
                   enteredPin = newPin
                   if (newPin.length == 4) {
-                    // Verify PIN
-                    val isValid = BiometricAuthManager.verifyPin(newPin)
-                    if (isValid) {
-                      onAuthorized("OFFICER_PIN")
+                    if (onVerifyPin != null) {
+                      onVerifyPin(newPin) { isValid ->
+                        if (isValid) {
+                          onAuthorized("OFFICER_PIN")
+                        } else {
+                          errorMessage = "Incorrect PIN. Please enter your 4-digit security PIN."
+                          enteredPin = ""
+                        }
+                      }
                     } else {
-                      errorMessage = "Incorrect PIN. Please enter your 4-digit security PIN."
-                      enteredPin = ""
+                      val isValid = BiometricAuthManager.verifyPin(newPin)
+                      if (isValid) {
+                        onAuthorized("OFFICER_PIN")
+                      } else {
+                        errorMessage = "Incorrect PIN. Please enter your 4-digit security PIN."
+                        enteredPin = ""
+                      }
                     }
                   }
                 }

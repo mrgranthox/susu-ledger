@@ -460,6 +460,8 @@ class SusuRepository(private val dao: SusuDao) {
 
   fun getAllIdentities(): Flow<List<IdentityEntity>> = dao.getAllIdentities()
 
+  suspend fun getAllIdentitiesOnce(): List<IdentityEntity> = dao.getAllIdentitiesOnce()
+
   suspend fun getIdentityByPhone(phone: String): IdentityEntity? = dao.getIdentityByPhone(phone)
 
   suspend fun verifyLedgerIntegrity(payments: List<PaymentEntity>, ledgerEntries: List<LedgerEntryEntity>): VerificationReport {

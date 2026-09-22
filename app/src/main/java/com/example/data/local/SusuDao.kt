@@ -21,6 +21,9 @@ interface SusuDao {
   @Query("SELECT * FROM identities ORDER BY display_name ASC")
   fun getAllIdentities(): Flow<List<IdentityEntity>>
 
+  @Query("SELECT * FROM identities ORDER BY display_name ASC")
+  suspend fun getAllIdentitiesOnce(): List<IdentityEntity>
+
   @Insert(onConflict = OnConflictStrategy.IGNORE)
   suspend fun insertIdentity(identity: IdentityEntity)
 

@@ -3,24 +3,16 @@ package com.example.auth
 import android.app.Activity
 import android.app.KeyguardManager
 import android.content.Context
-import android.util.Base64
 import android.util.Log
 import androidx.biometric.BiometricManager
-import androidx.credentials.CreatePublicKeyCredentialRequest
-import androidx.credentials.CredentialManager
-import androidx.credentials.GetCredentialRequest
-import androidx.credentials.GetPublicKeyCredentialOption
-import androidx.credentials.exceptions.CreateCredentialCancellationException
-import androidx.credentials.exceptions.CreateCredentialException
-import androidx.credentials.exceptions.GetCredentialCancellationException
-import androidx.credentials.exceptions.GetCredentialException
-import androidx.credentials.exceptions.NoCredentialException
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import com.example.util.CryptoUtils
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import java.security.MessageDigest
-import java.security.SecureRandom
+import kotlin.coroutines.resume
 
 sealed class BiometricAuthResult {
   data class Success(val method: String, val message: String) : BiometricAuthResult()
@@ -31,8 +23,6 @@ sealed class BiometricAuthResult {
 
 class BiometricAuthManager(private val context: Context) {
 
-  private val credentialManager = CredentialManager.create(context)
-
   companion object {
     private const val TAG = "BiometricAuthManager"
 
@@ -40,9 +30,23 @@ class BiometricAuthManager(private val context: Context) {
       return CryptoUtils.hashPin(pin, salt)
     }
 
+    /**
+     * Strictly verifies the 4-digit PIN against the stored salted SHA-256 hash.
+     * Prevents empty or permissive bypasses.
+     */
     fun verifyPin(enteredPin: String, expectedHash: String = "", salt: String = ""): Boolean {
-      if (expectedHash.isBlank()) return enteredPin.length == 4
+      if (enteredPin.length != 4 || expectedHash.isBlank()) return false
       return CryptoUtils.verifyPin(enteredPin, expectedHash, salt)
+    }
+
+    /**
+     * Checks whether fingerprint or face biometrics can be used on this physical device.
+     */
+    fun canAuthenticateBiometrics(context: Context): Boolean {
+      val bm = BiometricManager.from(context)
+      val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+          BiometricManager.Authenticators.BIOMETRIC_WEAK
+      return bm.canAuthenticate(authenticators) == BiometricManager.BIOMETRIC_SUCCESS
     }
 
     /**
@@ -53,143 +57,126 @@ class BiometricAuthManager(private val context: Context) {
       val km = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
       val bm = BiometricManager.from(context)
 
-      val canBiometricStrong = bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
-      val canBiometricWeak = bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) == BiometricManager.BIOMETRIC_SUCCESS
+      val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+          BiometricManager.Authenticators.BIOMETRIC_WEAK
+      val canBiometric = bm.canAuthenticate(authenticators) == BiometricManager.BIOMETRIC_SUCCESS
       val isDeviceSecure = km?.isDeviceSecure == true
 
       return when {
-        canBiometricStrong && isDeviceSecure -> "Fingerprint / Face ID & Device Lock (Pattern/PIN)"
-        canBiometricWeak && isDeviceSecure -> "Biometric Unlock & Device Lock (Pattern/PIN)"
-        canBiometricStrong -> "Fingerprint / Face Biometrics Active"
-        isDeviceSecure -> "Hardware Screen Lock Active (Pattern/PIN/Password)"
-        else -> "Hardware Security Available (4-Digit App PIN)"
+        canBiometric && isDeviceSecure -> "Fingerprint / Face & Device PIN/Pattern"
+        canBiometric -> "Fingerprint / Face Biometrics Enrolled"
+        isDeviceSecure -> "Hardware Screen Lock Active"
+        else -> "Officer 4-Digit Security PIN"
       }
     }
   }
 
   /**
-   * Generates a WebAuthn JSON request payload for biometric public key credentials (Passkey)
-   * with userVerification='required' to force biometric prompt (Fingerprint or Face).
-   */
-  private fun buildBiometricRequestJson(rpId: String, challengeBase64: String): String {
-    return """
-      {
-        "challenge": "$challengeBase64",
-        "rpId": "$rpId",
-        "userVerification": "required",
-        "timeout": 60000,
-        "allowCredentials": []
-      }
-    """.trimIndent()
-  }
-
-  private fun buildBiometricCreateJson(
-    rpId: String,
-    userName: String,
-    userDisplayName: String,
-    challengeBase64: String
-  ): String {
-    val userIdBase64 = Base64.encodeToString(userName.toByteArray(Charsets.UTF_8), Base64.NO_WRAP or Base64.URL_SAFE)
-    return """
-      {
-        "challenge": "$challengeBase64",
-        "rp": {
-          "name": "SusuLedger Security",
-          "id": "$rpId"
-        },
-        "user": {
-          "id": "$userIdBase64",
-          "name": "$userName",
-          "displayName": "$userDisplayName"
-        },
-        "pubKeyCredParams": [
-          { "type": "public-key", "alg": -7 },
-          { "type": "public-key", "alg": -257 }
-        ],
-        "authenticatorSelection": {
-          "authenticatorAttachment": "platform",
-          "residentKey": "required",
-          "requireResidentKey": true,
-          "userVerification": "required"
-        },
-        "timeout": 60000,
-        "attestation": "none"
-      }
-    """.trimIndent()
-  }
-
-  /**
-   * Registers/Enrolls a new Biometric Credential via androidx.credentials.CredentialManager
-   */
-  suspend fun registerBiometricCredential(
-    activity: Activity,
-    userName: String = "treasurer_officer",
-    userDisplayName: String = "Lead Treasurer"
-  ): BiometricAuthResult = withContext(Dispatchers.IO) {
-    try {
-      val randomBytes = ByteArray(32).apply { SecureRandom().nextBytes(this) }
-      val challenge = Base64.encodeToString(randomBytes, Base64.NO_WRAP or Base64.URL_SAFE)
-      val rpId = "susuledger.aistudio.com"
-      val requestJson = buildBiometricCreateJson(rpId, userName, userDisplayName, challenge)
-
-      val request = CreatePublicKeyCredentialRequest(requestJson)
-      val response = credentialManager.createCredential(activity, request)
-
-      Log.d(TAG, "Biometric passkey registered successfully: ${response.data}")
-      BiometricAuthResult.Success("BIOMETRIC_REGISTERED", "Biometric credential registered on device.")
-    } catch (e: CreateCredentialCancellationException) {
-      Log.d(TAG, "Registration cancelled by user")
-      BiometricAuthResult.Cancelled
-    } catch (e: CreateCredentialException) {
-      Log.e(TAG, "Biometric enrollment error: ${e.message}", e)
-      // Fallback: simulate enrollment in simulator/emulator
-      BiometricAuthResult.Success("BIOMETRIC_ENROLLED", "Biometric authentication enrolled successfully.")
-    } catch (e: CancellationException) {
-      throw e
-    } catch (e: Exception) {
-      Log.e(TAG, "Unexpected error: ${e.message}", e)
-      BiometricAuthResult.Error(e.localizedMessage ?: "Registration failed")
-    }
-  }
-
-  /**
-   * Authenticates using androidx.credentials.CredentialManager with biometric prompt (Fingerprint/Face).
-   * If biometrics are not registered or fail, provides seamless fallback to 4-digit PIN.
+   * Shows native Android OS BiometricPrompt dialog for scanning fingerprint or face.
+   * Runs natively via androidx.biometric.BiometricPrompt.
    */
   suspend fun authenticateWithBiometrics(
     activity: Activity,
-    title: String = "SusuLedger Officer Verification",
-    subtitle: String = "Authorize sensitive financial operation"
-  ): BiometricAuthResult = withContext(Dispatchers.IO) {
-    try {
-      val randomBytes = ByteArray(32).apply { SecureRandom().nextBytes(this) }
-      val challenge = Base64.encodeToString(randomBytes, Base64.NO_WRAP or Base64.URL_SAFE)
-      val rpId = "susuledger.aistudio.com"
-      val requestJson = buildBiometricRequestJson(rpId, challenge)
+    title: String = "Unlock SusuLedger",
+    subtitle: String = "Scan fingerprint or face to authenticate"
+  ): BiometricAuthResult {
+    val fragmentActivity = activity as? FragmentActivity
+    if (fragmentActivity == null) {
+      Log.w(TAG, "Activity is not a FragmentActivity, cannot show native BiometricPrompt.")
+      return BiometricAuthResult.FallbackToPin("Device context does not support biometric dialog.")
+    }
 
-      val getCredentialOption = GetPublicKeyCredentialOption(requestJson)
-      val request = GetCredentialRequest(listOf(getCredentialOption))
+    val bm = BiometricManager.from(activity)
+    val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+        BiometricManager.Authenticators.BIOMETRIC_WEAK
 
-      Log.d(TAG, "Calling CredentialManager.getCredential with biometric requirement")
-      val result = credentialManager.getCredential(activity, request)
-      val credential = result.credential
+    when (val canAuth = bm.canAuthenticate(authenticators)) {
+      BiometricManager.BIOMETRIC_SUCCESS -> {
+        // Proceed to show prompt
+      }
+      BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> {
+        Log.i(TAG, "No biometrics enrolled on device.")
+        return BiometricAuthResult.FallbackToPin("No fingerprint or face enrolled. Please enter your 4-digit PIN.")
+      }
+      BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> {
+        Log.i(TAG, "No biometric hardware on device.")
+        return BiometricAuthResult.FallbackToPin("Biometric sensor not available on this device.")
+      }
+      BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> {
+        Log.i(TAG, "Biometric hardware currently unavailable.")
+        return BiometricAuthResult.FallbackToPin("Biometric sensor temporarily unavailable.")
+      }
+      else -> {
+        Log.w(TAG, "Biometric status code: $canAuth")
+        return BiometricAuthResult.FallbackToPin("Biometrics not available (status code $canAuth).")
+      }
+    }
 
-      Log.d(TAG, "Biometric credential authenticated: ${credential.type}")
-      BiometricAuthResult.Success("BIOMETRIC", "Biometric identity verified via Credential Manager.")
-    } catch (e: GetCredentialCancellationException) {
-      Log.d(TAG, "Biometric auth cancelled by user")
-      BiometricAuthResult.Cancelled
-    } catch (e: NoCredentialException) {
-      Log.d(TAG, "No biometric credential enrolled, offering PIN fallback: ${e.message}")
-      BiometricAuthResult.FallbackToPin("No biometric enrolled. Please use your 4-digit PIN.")
-    } catch (e: GetCredentialException) {
-      Log.d(TAG, "CredentialManager exception, fallback to PIN: ${e.message}")
-      BiometricAuthResult.FallbackToPin("Biometric prompt unavailable. Enter your 4-digit PIN.")
-    } catch (e: CancellationException) {
-      throw e
-    } catch (e: Exception) {
-      Log.e(TAG, "Biometric authentication exception: ${e.message}", e)
-      BiometricAuthResult.FallbackToPin("Fallback to 4-digit PIN.")
+    return withContext(Dispatchers.Main) {
+      suspendCancellableCoroutine { continuation ->
+        val executor = ContextCompat.getMainExecutor(fragmentActivity)
+
+        val callback = object : BiometricPrompt.AuthenticationCallback() {
+          override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+            super.onAuthenticationSucceeded(result)
+            Log.d(TAG, "Biometric authentication succeeded.")
+            if (continuation.isActive) {
+              continuation.resume(
+                BiometricAuthResult.Success(
+                  method = "FINGERPRINT_OR_FACE",
+                  message = "Biometric authentication verified."
+                )
+              )
+            }
+          }
+
+          override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+            super.onAuthenticationError(errorCode, errString)
+            Log.d(TAG, "Biometric authentication error $errorCode: $errString")
+            if (continuation.isActive) {
+              when (errorCode) {
+                BiometricPrompt.ERROR_NEGATIVE_BUTTON,
+                BiometricPrompt.ERROR_USER_CANCELED -> {
+                  continuation.resume(BiometricAuthResult.Cancelled)
+                }
+                BiometricPrompt.ERROR_NO_BIOMETRICS -> {
+                  continuation.resume(BiometricAuthResult.FallbackToPin("No biometrics enrolled."))
+                }
+                else -> {
+                  continuation.resume(BiometricAuthResult.Error(errString.toString()))
+                }
+              }
+            }
+          }
+
+          override fun onAuthenticationFailed() {
+            super.onAuthenticationFailed()
+            Log.d(TAG, "Biometric scan failed (finger not recognized).")
+            // BiometricPrompt UI displays "Not recognized. Try again."
+          }
+        }
+
+        try {
+          val prompt = BiometricPrompt(fragmentActivity, executor, callback)
+          val promptInfo = BiometricPrompt.PromptInfo.Builder()
+            .setTitle(title)
+            .setSubtitle(subtitle)
+            .setNegativeButtonText("Use 4-Digit PIN")
+            .setAllowedAuthenticators(authenticators)
+            .build()
+
+          prompt.authenticate(promptInfo)
+
+          continuation.invokeOnCancellation {
+            prompt.cancelAuthentication()
+          }
+        } catch (e: Exception) {
+          Log.e(TAG, "Failed to launch BiometricPrompt: ${e.message}", e)
+          if (continuation.isActive) {
+            continuation.resume(BiometricAuthResult.FallbackToPin("Failed to initialize biometric prompt."))
+          }
+        }
+      }
     }
   }
 }
