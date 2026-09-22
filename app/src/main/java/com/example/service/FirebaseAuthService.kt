@@ -10,7 +10,13 @@ import java.util.concurrent.TimeUnit
 
 class FirebaseAuthService {
 
-  private val auth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
+  private val auth: FirebaseAuth? by lazy {
+    try {
+      FirebaseAuth.getInstance()
+    } catch (e: Exception) {
+      null
+    }
+  }
 
   fun sendSmsOtp(
     activity: Activity,
@@ -19,7 +25,13 @@ class FirebaseAuthService {
     onVerificationCompleted: (PhoneAuthCredential) -> Unit,
     onVerificationFailed: (String) -> Unit
   ) {
-    val options = PhoneAuthOptions.newBuilder(auth)
+    val firebaseAuth = auth
+    if (firebaseAuth == null) {
+      onVerificationFailed("Firebase is not initialized. Please ensure google-services.json is configured.")
+      return
+    }
+
+    val options = PhoneAuthOptions.newBuilder(firebaseAuth)
       .setPhoneNumber(phoneNumber)
       .setTimeout(60L, TimeUnit.SECONDS)
       .setActivity(activity)
@@ -49,7 +61,13 @@ class FirebaseAuthService {
     credential: PhoneAuthCredential,
     onResult: (Boolean, String?) -> Unit
   ) {
-    auth.signInWithCredential(credential)
+    val firebaseAuth = auth
+    if (firebaseAuth == null) {
+      onResult(false, "Firebase Auth not available.")
+      return
+    }
+
+    firebaseAuth.signInWithCredential(credential)
       .addOnCompleteListener { task ->
         if (task.isSuccessful) {
           onResult(true, null)
@@ -79,6 +97,6 @@ class FirebaseAuthService {
   }
 
   fun getCurrentUserPhone(): String? {
-    return auth.currentUser?.phoneNumber
+    return auth?.currentUser?.phoneNumber
   }
 }

@@ -5,8 +5,8 @@
 set -euo pipefail
 
 # 1. GCP Configuration Parameters (Adjust as needed)
-PROJECT_ID="${GCP_PROJECT_ID:-susu-ledger-prod}"
-REGION="${GCP_REGION:-europe-west2}"
+PROJECT_ID="${GCP_PROJECT_ID:-susu-ledger-c3daa}"
+REGION="${GCP_REGION:-africa-south1}"
 SERVICE_NAME="susu-backend"
 IMAGE_TAG="gcr.io/${PROJECT_ID}/${SERVICE_NAME}:$(git rev-parse --short HEAD 2>/dev/null || echo 'latest')"
 

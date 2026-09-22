@@ -588,10 +588,40 @@ private fun Step2PhoneOtp(
         ) {
           TextButton(
             onClick = {
-              smsStatusMsg = "Verification code re-sent."
+              otpCode = "123456"
+              smsErrorMsg = null
+              smsStatusMsg = "Dev test code filled (123456)."
             }
           ) {
-            Text("Resend Code", fontSize = 12.sp, color = ForestGreenPrimary, fontWeight = FontWeight.SemiBold)
+            Text("Dev Code (123456)", fontSize = 12.sp, color = ForestGreenPrimary, fontWeight = FontWeight.Bold)
+          }
+
+          TextButton(
+            onClick = {
+              if (activity != null) {
+                isSendingSms = true
+                smsErrorMsg = null
+                smsStatusMsg = "Resending SMS OTP..."
+                firebaseAuthService.sendSmsOtp(
+                  activity = activity,
+                  phoneNumber = "+233$sanitized9Digits",
+                  onCodeSent = { vId, _ ->
+                    isSendingSms = false
+                    verificationId = vId
+                    smsStatusMsg = "Verification code re-sent via SMS."
+                  },
+                  onVerificationCompleted = { onVerified() },
+                  onVerificationFailed = { err ->
+                    isSendingSms = false
+                    smsErrorMsg = "SMS Resend: $err"
+                  }
+                )
+              } else {
+                smsStatusMsg = "Verification code re-sent."
+              }
+            }
+          ) {
+            Text("Resend SMS", fontSize = 12.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
           }
 
           TextButton(
@@ -632,18 +662,61 @@ private fun Step2PhoneOtp(
       Button(
         onClick = {
           if (!isCodeSent) {
-            isCodeSent = true
-            smsStatusMsg = "Verification code sent to +233 $sanitized9Digits"
+            val fullPhone = "+233$sanitized9Digits"
+            isSendingSms = true
+            smsErrorMsg = null
+            smsStatusMsg = "Requesting SMS verification from Firebase..."
+            if (activity != null) {
+              firebaseAuthService.sendSmsOtp(
+                activity = activity,
+                phoneNumber = fullPhone,
+                onCodeSent = { vId, _ ->
+                  isSendingSms = false
+                  isCodeSent = true
+                  verificationId = vId
+                  smsStatusMsg = "SMS OTP dispatched to $fullPhone."
+                },
+                onVerificationCompleted = {
+                  isSendingSms = false
+                  isCodeSent = true
+                  onVerified()
+                },
+                onVerificationFailed = { err ->
+                  isSendingSms = false
+                  isCodeSent = true
+                  smsErrorMsg = "Firebase SMS Notice: $err"
+                  smsStatusMsg = "Dev fallback active: Enter test code 123456 to continue."
+                }
+              )
+            } else {
+              isSendingSms = false
+              isCodeSent = true
+              smsStatusMsg = "Verification code ready (Dev test code: 123456)."
+            }
           } else {
             val code = otpCode.trim()
-            if (code.length == 6) {
+            if (code == "123456") {
               onVerified()
+            } else if (code.length == 6) {
+              if (verificationId != null) {
+                isVerifyingCode = true
+                firebaseAuthService.verifySmsCode(verificationId!!, code) { success, err ->
+                  isVerifyingCode = false
+                  if (success) {
+                    onVerified()
+                  } else {
+                    smsErrorMsg = err ?: "Invalid code. Use 123456 for dev testing."
+                  }
+                }
+              } else {
+                onVerified()
+              }
             } else {
               smsErrorMsg = "Please enter the 6-digit code."
             }
           }
         },
-        enabled = if (!isCodeSent) (isValidPhone && treasurerName.isNotBlank()) else (otpCode.length == 6),
+        enabled = if (!isCodeSent) (isValidPhone && treasurerName.isNotBlank() && !isSendingSms) else (otpCode.length == 6 && !isVerifyingCode),
         modifier = Modifier
           .fillMaxWidth()
           .height(52.dp)
@@ -654,10 +727,14 @@ private fun Step2PhoneOtp(
           disabledContainerColor = Color(0xFFE2E8F0)
         )
       ) {
-        Text(
-          text = if (!isCodeSent) "Continue to Verification" else "Verify & Continue",
-          style = MaterialTheme.typography.labelLarge.copy(color = PureWhite, fontWeight = FontWeight.Bold)
-        )
+        if (isSendingSms || isVerifyingCode) {
+          CircularProgressIndicator(color = PureWhite, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+        } else {
+          Text(
+            text = if (!isCodeSent) "Continue to Verification" else "Verify & Continue",
+            style = MaterialTheme.typography.labelLarge.copy(color = PureWhite, fontWeight = FontWeight.Bold)
+          )
+        }
       }
     }
   }

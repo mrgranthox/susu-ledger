@@ -1,4 +1,3 @@
-const redis = require('redis');
 require('dotenv').config();
 
 let client = null;
@@ -8,6 +7,7 @@ const redisUrl = process.env.REDIS_URL || process.env.REDIS_TLS_URL;
 
 if (redisUrl) {
   try {
+    const redis = require('redis');
     client = redis.createClient({
       url: redisUrl,
       socket: {

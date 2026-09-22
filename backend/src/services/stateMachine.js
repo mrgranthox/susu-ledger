@@ -1,4 +1,4 @@
-const { db } = require('../config/database');
+const db = require('../config/database');
 const cacheService = require('../config/redis');
 const { sendWhatsAppInteractiveMessage, sendWhatsAppTextMessage } = require('./whatsappService');
 

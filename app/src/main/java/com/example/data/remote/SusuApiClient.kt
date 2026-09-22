@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit
 object SusuApiClient {
 
   // Default Cloud Run backend URL deployed in Google Cloud
-  const val DEFAULT_BASE_URL = "https://ais-dev-nm4jjkh3kpkp6uqqrmd54t-569691847391.europe-west2.run.app/"
+  const val DEFAULT_BASE_URL = "https://susu-backend-965064733382.africa-south1.run.app/"
 
   private var customBaseUrl: String = DEFAULT_BASE_URL
 

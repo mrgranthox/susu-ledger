@@ -17,7 +17,12 @@ pool.on('error', (err) => {
   console.error('[DB] Unexpected error on idle PostgreSQL client:', err);
 });
 
-module.exports = {
+const dbInterface = {
   query: (text, params) => pool.query(text, params),
   pool,
+};
+
+module.exports = {
+  ...dbInterface,
+  db: dbInterface,
 };
