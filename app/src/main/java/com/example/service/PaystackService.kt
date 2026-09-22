@@ -52,7 +52,7 @@ class PaystackService {
   private fun getSecretKey(): String {
     return try {
       val key = BuildConfig.PAYSTACK_SECRET_KEY
-      if (key.isNull_or_empty() || key.contains("placeholder")) {
+      if (key.isNullOrEmpty() || key.contains("placeholder")) {
         "sk_test_paystack_default_demo_key"
       } else {
         key

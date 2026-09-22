@@ -16,9 +16,11 @@
 local.properties
 .env
 .env.*
+!.env.example
 *.env
 backend/.env
 backend/.env.*
+!backend/.env.example
 debug.keystore
 *.key
 *.pem
