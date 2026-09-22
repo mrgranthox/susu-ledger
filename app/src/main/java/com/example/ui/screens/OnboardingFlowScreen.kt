@@ -1,8 +1,10 @@
 package com.example.ui.screens
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.ContactsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -21,8 +23,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -92,6 +96,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import androidx.core.content.ContextCompat
 import com.example.service.FirebaseAuthService
 import com.example.ui.components.AppLogoBadge
 import com.example.ui.theme.BorderGrey
@@ -104,6 +109,7 @@ import com.example.ui.theme.PureWhite
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.util.DeviceContactManager
 import com.example.util.GhanaPhoneUtils
 
 data class SetupMemberItem(val name: String, val phone: String)
@@ -133,6 +139,8 @@ fun OnboardingFlowScreen(
     modifier = Modifier
       .fillMaxSize()
       .background(PureWhite)
+      .statusBarsPadding()
+      .navigationBarsPadding()
       .padding(horizontal = 24.dp, vertical = 16.dp),
     horizontalAlignment = Alignment.CenterHorizontally
   ) {
@@ -842,6 +850,14 @@ private fun Step4AddMembers(
 
   val sanitizedPhone = remember(newPhone) { GhanaPhoneUtils.sanitizeTo9Digits(newPhone) }
 
+  // Runtime Contacts permission launcher
+  val contactsPermissionLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.RequestPermission()
+  ) { _ ->
+    // Open the bottom sheet regardless: it will display either contacts or a friendly permission card
+    showContactsBottomSheet = true
+  }
+
   // System contact picker launcher
   val contactPickerLauncher = rememberLauncherForActivityResult(
     contract = ActivityResultContracts.PickContact()
@@ -903,7 +919,13 @@ private fun Step4AddMembers(
 
       // Button to open contacts modal
       OutlinedButton(
-        onClick = { showContactsBottomSheet = true },
+        onClick = {
+          if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
+            showContactsBottomSheet = true
+          } else {
+            contactsPermissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+          }
+        },
         modifier = Modifier
           .fillMaxWidth()
           .height(46.dp)
@@ -1150,38 +1172,35 @@ private fun ContactsPickerBottomSheet(
   var searchQuery by remember { mutableStateOf("") }
   val selectedContacts = remember { mutableStateListOf<ContactItem>() }
 
-  // Load real contacts from phone ContentProvider if permission granted
-  val deviceContacts = remember(context) {
-    val list = mutableListOf<ContactItem>()
-    try {
-      val cursor = context.contentResolver.query(
-        ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-        arrayOf(
-          ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-          ContactsContract.CommonDataKinds.Phone.NUMBER
-        ),
-        null,
-        null,
-        "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC"
-      )
-      cursor?.use { c ->
-        val nameIdx = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-        val numIdx = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
-        while (c.moveToNext()) {
-          val name = if (nameIdx >= 0) c.getString(nameIdx) ?: "" else ""
-          val number = if (numIdx >= 0) c.getString(numIdx) ?: "" else ""
-          if (name.isNotBlank() && number.isNotBlank()) {
-            val formatted = com.example.util.CryptoUtils.formatGhanaPhone(number)
-            if (list.none { it.phone == formatted || it.name == name }) {
-              list.add(ContactItem(name, formatted))
-            }
-          }
-        }
+  var hasPermission by remember {
+    mutableStateOf(
+      ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+    )
+  }
+
+  val permissionLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.RequestPermission()
+  ) { isGranted ->
+    hasPermission = isGranted
+  }
+
+  var isLoadingContacts by remember { mutableStateOf(false) }
+  var deviceContacts by remember { mutableStateOf<List<ContactItem>>(emptyList()) }
+
+  LaunchedEffect(hasPermission) {
+    if (hasPermission) {
+      isLoadingContacts = true
+      try {
+        val loaded = DeviceContactManager.loadDeviceContacts(context)
+        deviceContacts = loaded.map { ContactItem(it.name, it.formattedPhone) }
+      } catch (e: Exception) {
+        deviceContacts = emptyList()
+      } finally {
+        isLoadingContacts = false
       }
-    } catch (_: Exception) {
-      // Permission not granted or empty list
+    } else {
+      deviceContacts = emptyList()
     }
-    list
   }
 
   val filteredContacts = remember(searchQuery, deviceContacts) {
@@ -1219,99 +1238,172 @@ private fun ContactsPickerBottomSheet(
 
       Spacer(modifier = Modifier.height(10.dp))
 
-      // Search Bar
-      OutlinedTextField(
-        value = searchQuery,
-        onValueChange = { searchQuery = it },
-        placeholder = { Text("Search name or phone number...", fontSize = 13.sp) },
-        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(18.dp)) },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-        shape = RoundedCornerShape(8.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-          focusedBorderColor = ForestGreenPrimary,
-          unfocusedBorderColor = BorderGrey
-        )
-      )
-
-      Spacer(modifier = Modifier.height(12.dp))
-
-      // Scrollable contact list
-      LazyColumn(
-        modifier = Modifier
-          .fillMaxWidth()
-          .height(300.dp)
-      ) {
-        items(filteredContacts, key = { it.phone }) { contact ->
-          val isSelected = selectedContacts.contains(contact)
-          Row(
-            modifier = Modifier
-              .fillMaxWidth()
-              .clickable {
-                if (isSelected) selectedContacts.remove(contact)
-                else selectedContacts.add(contact)
-              }
-              .padding(vertical = 8.dp, horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+      if (!hasPermission) {
+        Card(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+          colors = CardDefaults.cardColors(containerColor = ForestGreenLightFill),
+          border = BorderStroke(1.dp, ForestGreenPrimary.copy(alpha = 0.3f)),
+          shape = RoundedCornerShape(12.dp)
+        ) {
+          Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
           ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-              Checkbox(
-                checked = isSelected,
-                onCheckedChange = { checked ->
-                  if (checked) selectedContacts.add(contact)
-                  else selectedContacts.remove(contact)
-                },
-                colors = CheckboxDefaults.colors(checkedColor = ForestGreenPrimary)
-              )
-              Spacer(modifier = Modifier.width(6.dp))
-              Column {
-                Text(contact.name, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary))
-                Text(contact.phone, style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary, fontSize = 11.sp))
-              }
-            }
-
-            Surface(
-              color = if (isSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
-              shape = RoundedCornerShape(4.dp),
-              modifier = Modifier.clickable {
-                if (isSelected) selectedContacts.remove(contact)
-                else selectedContacts.add(contact)
-              }
+            Icon(
+              imageVector = Icons.Default.Contacts,
+              contentDescription = null,
+              tint = ForestGreenPrimary,
+              modifier = Modifier.size(36.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+              text = "Contacts Permission Required",
+              style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = TextPrimary),
+              textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+              text = "Allow SusuLedger to read contacts on your device to import your Susu members with one tap.",
+              style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary),
+              textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+            Button(
+              onClick = { permissionLauncher.launch(Manifest.permission.READ_CONTACTS) },
+              colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+              shape = RoundedCornerShape(8.dp),
+              modifier = Modifier.fillMaxWidth()
             ) {
-              Text(
-                text = if (isSelected) "Selected" else "+ Add",
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                fontSize = 11.sp,
-                color = if (isSelected) PureWhite else TextPrimary,
-                fontWeight = FontWeight.Bold
-              )
+              Text("Grant Permission", fontWeight = FontWeight.Bold, color = PureWhite)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            TextButton(onClick = onPickFromSystem) {
+              Text("Or choose one from System Picker", color = ForestGreenPrimary, fontSize = 12.sp)
             }
           }
         }
-      }
-
-      Spacer(modifier = Modifier.height(16.dp))
-
-      // Confirm Add Button
-      Button(
-        onClick = {
-          onAddSelected(selectedContacts.map { SetupMemberItem(it.name, it.phone) })
-        },
-        enabled = selectedContacts.isNotEmpty(),
-        modifier = Modifier
-          .fillMaxWidth()
-          .height(50.dp),
-        shape = RoundedCornerShape(8.dp),
-        colors = ButtonDefaults.buttonColors(
-          containerColor = ForestGreenPrimary,
-          disabledContainerColor = Color(0xFFE2E8F0)
+      } else {
+        // Search Bar
+        OutlinedTextField(
+          value = searchQuery,
+          onValueChange = { searchQuery = it },
+          placeholder = { Text("Search name or phone number...", fontSize = 13.sp) },
+          leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(18.dp)) },
+          modifier = Modifier.fillMaxWidth(),
+          singleLine = true,
+          shape = RoundedCornerShape(8.dp),
+          colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = ForestGreenPrimary,
+            unfocusedBorderColor = BorderGrey
+          )
         )
-      ) {
-        Text("Import ${selectedContacts.size} Selected Member${if (selectedContacts.size != 1) "s" else ""}", color = PureWhite, fontWeight = FontWeight.Bold)
-      }
 
-      Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (isLoadingContacts) {
+          Box(
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(200.dp),
+            contentAlignment = Alignment.Center
+          ) {
+            CircularProgressIndicator(color = ForestGreenPrimary)
+          }
+        } else if (deviceContacts.isEmpty()) {
+          Box(
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(160.dp),
+            contentAlignment = Alignment.Center
+          ) {
+            Text(
+              text = "No contacts found on device.\nYou can type member details or use the System Picker.",
+              color = TextSecondary,
+              textAlign = TextAlign.Center,
+              fontSize = 13.sp
+            )
+          }
+        } else {
+          // Scrollable contact list
+          LazyColumn(
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(300.dp)
+          ) {
+            items(filteredContacts, key = { it.phone }) { contact ->
+              val isSelected = selectedContacts.contains(contact)
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .clickable {
+                    if (isSelected) selectedContacts.remove(contact)
+                    else selectedContacts.add(contact)
+                  }
+                  .padding(vertical = 8.dp, horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+              ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { checked ->
+                      if (checked) selectedContacts.add(contact)
+                      else selectedContacts.remove(contact)
+                    },
+                    colors = CheckboxDefaults.colors(checkedColor = ForestGreenPrimary)
+                  )
+                  Spacer(modifier = Modifier.width(6.dp))
+                  Column {
+                    Text(contact.name, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary))
+                    Text(contact.phone, style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary, fontSize = 11.sp))
+                  }
+                }
+
+                Surface(
+                  color = if (isSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                  shape = RoundedCornerShape(4.dp),
+                  modifier = Modifier.clickable {
+                    if (isSelected) selectedContacts.remove(contact)
+                    else selectedContacts.add(contact)
+                  }
+                ) {
+                  Text(
+                    text = if (isSelected) "Selected" else "+ Add",
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    fontSize = 11.sp,
+                    color = if (isSelected) PureWhite else TextPrimary,
+                    fontWeight = FontWeight.Bold
+                  )
+                }
+              }
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Confirm Add Button
+        Button(
+          onClick = {
+            onAddSelected(selectedContacts.map { SetupMemberItem(it.name, it.phone) })
+          },
+          enabled = selectedContacts.isNotEmpty(),
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(50.dp),
+          shape = RoundedCornerShape(8.dp),
+          colors = ButtonDefaults.buttonColors(
+            containerColor = ForestGreenPrimary,
+            disabledContainerColor = Color(0xFFE2E8F0)
+          )
+        ) {
+          Text("Import ${selectedContacts.size} Selected Member${if (selectedContacts.size != 1) "s" else ""}", color = PureWhite, fontWeight = FontWeight.Bold)
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+      }
     }
   }
 }
@@ -1447,10 +1539,9 @@ private fun PinBoxRow(
   pinValue: String,
   onPinChange: (String) -> Unit,
   label: String,
+  focusRequester: FocusRequester = remember { FocusRequester() },
   testTagPrefix: String = "pin_box"
 ) {
-  val focusRequester = remember { FocusRequester() }
-
   Column(modifier = Modifier.fillMaxWidth()) {
     Text(
       text = label,
@@ -1534,8 +1625,33 @@ private fun Step6SecurityPin(
   var createPin by remember { mutableStateOf(treasurerPin) }
   var confirmPin by remember { mutableStateOf(treasurerPin) }
 
+  val createFocusRequester = remember { FocusRequester() }
+  val confirmFocusRequester = remember { FocusRequester() }
+
   val pinsMatch = createPin.length == 4 && confirmPin.length == 4 && createPin == confirmPin
   val pinsMismatch = createPin.length == 4 && confirmPin.length == 4 && createPin != confirmPin
+
+  // Auto-focus the create PIN field on entry
+  LaunchedEffect(Unit) {
+    kotlinx.coroutines.delay(200)
+    createFocusRequester.requestFocus()
+  }
+
+  // Auto-advance to confirm PIN when 4 digits are entered in create PIN
+  LaunchedEffect(createPin) {
+    if (createPin.length == 4) {
+      confirmFocusRequester.requestFocus()
+    }
+  }
+
+  // Auto-navigate to next page when both PINs match and are verified
+  LaunchedEffect(createPin, confirmPin) {
+    if (createPin.length == 4 && confirmPin.length == 4 && createPin == confirmPin) {
+      onTreasurerPinChange(createPin)
+      kotlinx.coroutines.delay(350)
+      onContinue()
+    }
+  }
 
   Column(
     modifier = Modifier
@@ -1569,6 +1685,7 @@ private fun Step6SecurityPin(
           }
         },
         label = "Create 4-Digit Security PIN",
+        focusRequester = createFocusRequester,
         testTagPrefix = "create_pin"
       )
 
@@ -1583,6 +1700,7 @@ private fun Step6SecurityPin(
           }
         },
         label = "Confirm 4-Digit Security PIN",
+        focusRequester = confirmFocusRequester,
         testTagPrefix = "confirm_pin"
       )
 
@@ -1607,7 +1725,7 @@ private fun Step6SecurityPin(
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-              text = "Security PINs match perfectly",
+              text = "Security PINs match perfectly — saving & continuing...",
               fontSize = 13.sp,
               fontWeight = FontWeight.Bold,
               color = ForestGreenPrimary

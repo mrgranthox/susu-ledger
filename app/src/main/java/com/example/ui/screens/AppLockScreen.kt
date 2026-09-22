@@ -72,6 +72,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun AppLockScreen(
   groupName: String = "Susu Group",
+  onVerifyPin: ((enteredPin: String, onResult: (Boolean) -> Unit) -> Unit)? = null,
   onUnlockSuccess: () -> Unit,
   onSignOut: () -> Unit
 ) {
@@ -304,12 +305,23 @@ fun AppLockScreen(
               enteredPin = newPin
               errorMessage = null
               if (newPin.length == 4) {
-                val isValid = BiometricAuthManager.verifyPin(newPin)
-                if (isValid) {
-                  onUnlockSuccess()
+                if (onVerifyPin != null) {
+                  onVerifyPin(newPin) { isValid ->
+                    if (isValid) {
+                      onUnlockSuccess()
+                    } else {
+                      errorMessage = "Incorrect 4-digit PIN. Please try again."
+                      enteredPin = ""
+                    }
+                  }
                 } else {
-                  errorMessage = "Incorrect PIN. Please try again."
-                  enteredPin = ""
+                  val isValid = BiometricAuthManager.verifyPin(newPin)
+                  if (isValid) {
+                    onUnlockSuccess()
+                  } else {
+                    errorMessage = "Incorrect 4-digit PIN. Please try again."
+                    enteredPin = ""
+                  }
                 }
               }
             }
