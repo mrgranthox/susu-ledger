@@ -120,6 +120,7 @@ class MainActivity : FragmentActivity() {
         val unsyncedPaymentsCount by viewModel.unsyncedPaymentsCount.collectAsState()
         val botPairingCode by viewModel.botPairingCode.collectAsState()
         val isBotConnected by viewModel.isBotConnected.collectAsState()
+        val botConnectionError by viewModel.botConnectionError.collectAsState()
         val cloudStatus by viewModel.cloudStatus.collectAsState()
 
         val showPaymentSheet by viewModel.showPaymentSheet.collectAsState()
@@ -245,6 +246,7 @@ class MainActivity : FragmentActivity() {
             if (isOnboardingCompleted) {
               // Returning officer session: Directly present PIN / Biometric login to prevent starting from scratch
               AuthOtpScreen(
+                onBiometricAuthenticated = { result -> viewModel.authenticateBiometricOfficer(result) },
                 onAuthenticate = { phone, pin, role, onResult ->
                   viewModel.authenticateOfficer(phone, pin, role) { success, err ->
                     if (success) {
@@ -255,6 +257,7 @@ class MainActivity : FragmentActivity() {
                   }
                 },
                 onNavigateToRegister = {
+                  viewModel.beginRegistration()
                   showLoginScreen = false
                   showSplashScreen = false
                   showWalkthroughScreen = false
@@ -284,6 +287,7 @@ class MainActivity : FragmentActivity() {
                 }
                 showLoginScreen -> {
                   AuthOtpScreen(
+                    onBiometricAuthenticated = { result -> viewModel.authenticateBiometricOfficer(result) },
                     onAuthenticate = { phone, pin, role, onResult ->
                       viewModel.authenticateOfficer(phone, pin, role) { success, err ->
                         if (success) {
@@ -331,11 +335,6 @@ class MainActivity : FragmentActivity() {
               },
               onUnlockSuccess = {
                 viewModel.unlockApp()
-              },
-              onSignOut = {
-                viewModel.logout()
-                showSplashScreen = true
-                showWalkthroughScreen = false
               }
             )
           } else {
@@ -347,9 +346,12 @@ class MainActivity : FragmentActivity() {
                 CycleDetailScreen(
                   cycleNumber = activeCycle?.number ?: 1,
                   dueDate = "Friday",
+                  cycleAmount = activeCycle?.amountDue ?: (currentGroup?.amount ?: 50.0),
                   members = members,
-                  paidMemberIds = payments.map { it.memberId }.toSet(),
+                  paidMemberIds = payments.filter { it.cycleId == activeCycle?.id }.groupBy { it.memberId }
+                    .filterValues { records -> records.sumOf { it.amountPaid } >= (activeCycle?.amountDue ?: 0.0) }.keys,
                   onBack = { viewModel.closeSubscreen() },
+                  onSendReminder = { viewModel.sendWeeklyCollectionReminder() },
                   onMarkPaid = { member ->
                     viewModel.openPaymentSheetForMember(member)
                   },
@@ -377,9 +379,9 @@ class MainActivity : FragmentActivity() {
                     viewModel.closeSubscreen()
                     pendingSensitiveAction = Triple(
                       "Authorize Week Rollout",
-                      "Open Week $weekNum at GHS ${amt.toInt()} due $dueDate and notify all members via WhatsApp."
+                      "Open Week $weekNum at GHS $amt due $dueDate and queue WhatsApp updates for opted-in members."
                     ) {
-                      viewModel.advanceNewWeek()
+                      viewModel.advanceNewWeek(amt, dueDate)
                     }
                   }
                 )
@@ -392,6 +394,8 @@ class MainActivity : FragmentActivity() {
                   members = members,
                   pairingCode = pairingCode,
                   cloudStatus = cloudStatus,
+                  isBotConnected = isBotConnected,
+                  connectionError = botConnectionError,
                   onBack = { viewModel.closeSubscreen() },
                   onSendMessage = { phone, msg -> viewModel.sendLiveWhatsAppMessage(phone, msg) },
                   onOpenPairing = { viewModel.showPairingSheet(true) },
@@ -540,7 +544,6 @@ class MainActivity : FragmentActivity() {
                         isBotConnected = isBotConnected,
                         onSyncClick = { viewModel.syncWithCloud() },
                         onSelectGroup = { viewModel.selectGroup(it) },
-                        onOpenPairing = { viewModel.showPairingSheet(true) },
                         onConfirmClaim = { claim -> viewModel.openPaymentSheetForClaim(claim) },
                         onRejectClaim = { claim ->
                           pendingSensitiveAction = Triple(
@@ -571,8 +574,7 @@ class MainActivity : FragmentActivity() {
                         expectedCycleAmount = activeCycle?.amountDue ?: (currentGroup?.amount ?: 50.0),
                         onRecordPaymentForMember = { member -> viewModel.openPaymentSheetForMember(member) },
                         onAddMemberClick = { viewModel.showAddMemberDialog(true) },
-                        onImportContactsClick = requestContactsAccess,
-                        onBackClick = { viewModel.setNavIndex(0) }
+                        onImportContactsClick = requestContactsAccess
                       )
 
                       2 -> HistoryScreen(
@@ -580,11 +582,11 @@ class MainActivity : FragmentActivity() {
                         cycles = allCycles,
                         members = members,
                         payments = payments,
-                        onOpenReportExport = { viewModel.showReportsSheet(true) },
-                        onBackClick = { viewModel.setNavIndex(0) }
+                        onOpenReportExport = { viewModel.showReportsSheet(true) }
                       )
 
                       3 -> MoreSettingsScreen(
+                        isBotConnected = isBotConnected,
                         groupName = currentGroupName,
                         currentGroup = currentGroup,
                         activeCycle = activeCycle,
@@ -607,8 +609,7 @@ class MainActivity : FragmentActivity() {
                         },
                         onLockApp = {
                           viewModel.lockApp()
-                        },
-                        onBackClick = { viewModel.setNavIndex(0) }
+                        }
                       )
                     }
                   }
@@ -619,22 +620,28 @@ class MainActivity : FragmentActivity() {
             // Confirm Payment Bottom Sheet
             if (showPaymentSheet) {
               val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+              var paymentWeek by remember { mutableStateOf(allCycles.find { it.id == selectedClaimForConfirmation?.cycleId } ?: activeCycle) }
               ConfirmPaymentSheet(
                 sheetState = sheetState,
                 members = members,
                 initialMember = selectedMemberForPayment,
                 initialClaim = selectedClaimForConfirmation,
-                cycleNumber = activeCycle?.number ?: 1,
-                cycleDueAmount = activeCycle?.amountDue ?: (currentGroup?.amount ?: 50.0),
+                cycleNumber = paymentWeek?.number ?: 1,
+                cycleDueAmount = paymentWeek?.amountDue ?: (currentGroup?.amount ?: 50.0),
+                availableCycles = allCycles,
+                selectedCycleId = paymentWeek?.id,
+                onSelectCycle = { paymentWeek = it },
                 onDismiss = { viewModel.dismissPaymentSheet() },
                 onConfirm = { memberId, amount, method, momoRef, sendReceipt ->
+                  val claimToConfirm = selectedClaimForConfirmation
+                  val weekToConfirm = paymentWeek?.id
                   val memberName = members.find { it.id == memberId }?.alias ?: "Member"
                   viewModel.dismissPaymentSheet()
                   pendingSensitiveAction = Triple(
                     "Authorize Ledger Record",
                     "Authorizing GHS ${String.format(java.util.Locale.US, "%.2f", amount)} for $memberName to be appended to official ledger history."
                   ) {
-                    viewModel.confirmPayment(memberId, amount, method, momoRef, sendReceipt)
+                    viewModel.confirmPayment(memberId, amount, method, momoRef, sendReceipt, claimToConfirm, weekToConfirm)
                   }
                 }
               )

@@ -74,8 +74,11 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   val pairingCode: StateFlow<String> = _pairingCode.asStateFlow()
   val botPairingCode: StateFlow<String> = _pairingCode.asStateFlow()
 
-  private val _isBotConnected = MutableStateFlow(true)
+  private val _isBotConnected = MutableStateFlow(false)
   val isBotConnected: StateFlow<Boolean> = _isBotConnected.asStateFlow()
+
+  private val _botConnectionError = MutableStateFlow<String?>(null)
+  val botConnectionError: StateFlow<String?> = _botConnectionError.asStateFlow()
 
   // Cloud Diagnostics State
   private val _cloudStatus = MutableStateFlow<CloudSystemStatusResponse?>(null)
@@ -119,6 +122,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
             if (status.isSuccessful && status.body()?.status == "PAIRED") {
               _isBotConnected.value = true
               _toastMessage.value = "WhatsApp pairing confirmed"
+              _showPairingSheet.value = false
               break
             }
           }
@@ -218,12 +222,8 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   val ledgerEntries: StateFlow<List<LedgerEntryEntity>> = repository.allLedgerEntries
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-  val pendingClaims: StateFlow<List<ClaimEntity>> = activeCycle.flatMapLatest { cycle ->
-    if (cycle != null) {
-      repository.getPendingClaims(cycle.id)
-    } else {
-      MutableStateFlow(emptyList())
-    }
+  val pendingClaims: StateFlow<List<ClaimEntity>> = _selectedGroupId.flatMapLatest { groupId ->
+    repository.getPendingGroupClaims(groupId)
   }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
   val messages: StateFlow<List<MessageLogEntity>> = repository.allMessages
@@ -247,9 +247,16 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     if (groupId.isBlank() || com.google.firebase.auth.FirebaseAuth.getInstance().currentUser == null) return
     try {
       repository.syncPendingClaimsFromCloud(groupId)
+      val id = runCatching { java.util.UUID.fromString(groupId).toString() }
+        .getOrElse { java.util.UUID.nameUUIDFromBytes(groupId.toByteArray(Charsets.UTF_8)).toString() }
+      val connection = SusuApiClient.getApiService().getBotConnection(id)
+      if (!connection.isSuccessful) error("Connection check failed (HTTP ${connection.code()})")
+      _isBotConnected.value = connection.body()?.status == "CONNECTED"
+      _botConnectionError.value = if (_isBotConnected.value) null else "WhatsApp is disconnected. Reconnect with your verified number."
     } catch (cancelled: kotlinx.coroutines.CancellationException) {
       throw cancelled
-    } catch (_: Exception) {
+    } catch (error: Exception) {
+      _botConnectionError.value = "Unable to refresh: ${error.localizedMessage}"
       // Keep local records while offline; retry on the next foreground refresh.
     }
   }
@@ -374,7 +381,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   ) { mems, pays, cycle, claims ->
     val cyclePays = if (cycle != null) pays.filter { it.cycleId == cycle.id } else pays
     val totalMems = mems.size
-    val paidCount = cyclePays.map { it.memberId }.distinct().size
+    val paidCount = cyclePays.groupBy { it.memberId }.count { (_, records) -> records.sumOf { it.amountPaid } >= (cycle?.amountDue ?: 50.0) }
     val pendingCount = (totalMems - paidCount).coerceAtLeast(0)
     val confirmedAmt = cyclePays.sumOf { it.amountPaid }
     val cycleDue = cycle?.amountDue ?: 50.0
@@ -467,7 +474,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
           members = members,
           treasurerPin = treasurerPin
         )
-        val resolvedPin = if (treasurerPin.isNotBlank()) treasurerPin else "1234"
+        val resolvedPin = treasurerPin
         _selectedGroupId.value = newGroup.id
         _userPhone.value = treasurerPhone
         _userRole.value = "treasurer"
@@ -703,10 +710,6 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     }
   }
 
-  fun loginWithOtp(phone: String, role: String) {
-    authenticateOfficer(phone, "1234", role) { _, _ -> }
-  }
-
   fun openPaymentSheetForClaim(claim: ClaimEntity) {
     _selectedClaimForConfirmation.value = claim
     val mem = members.value.find { it.id == claim.memberId }
@@ -737,11 +740,12 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     amount: Double,
     method: String,
     momoRef: String?,
-    sendWhatsAppReceipt: Boolean
+    sendWhatsAppReceipt: Boolean,
+    associatedClaim: ClaimEntity? = _selectedClaimForConfirmation.value,
+    targetCycleId: String? = null
   ) {
     val cycle = activeCycle.value ?: return
     val groupId = _selectedGroupId.value
-    val associatedClaim = _selectedClaimForConfirmation.value
 
     viewModelScope.launch {
       try {
@@ -749,7 +753,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         val officerId = group?.treasurerId ?: "treasurer"
         val payment = repository.recordPayment(
           groupId = groupId,
-          cycleId = cycle.id,
+          cycleId = associatedClaim?.cycleId ?: targetCycleId ?: cycle.id,
           memberId = memberId,
           amount = amount,
           method = method,
@@ -780,14 +784,18 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     }
   }
 
-  fun advanceNewWeek() {
+  fun advanceNewWeek(amount: Double? = null, dueDate: String? = null) {
     val cycle = activeCycle.value ?: return
     val groupId = _selectedGroupId.value
     viewModelScope.launch {
-      repository.startNewCycle(groupId, cycle)
-      _showNewWeekDialog.value = false
-      _toastMessage.value = "Week ${cycle.number + 1} opened successfully!"
-      syncWithCloud()
+      try {
+        repository.startNewCycle(groupId, cycle, amount ?: cycle.amountDue, dueDate)
+        _showNewWeekDialog.value = false
+        _toastMessage.value = "Week ${cycle.number + 1} opened successfully!"
+        syncWithCloud()
+      } catch (error: Exception) {
+        _toastMessage.value = "Unable to open week: ${error.localizedMessage}"
+      }
     }
   }
 
@@ -931,6 +939,33 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     _isAppLocked.value = false
     sessionManager.clearSession()
     _toastMessage.value = "Signed out successfully"
+  }
+
+  fun beginRegistration() {
+    _isOnboardingCompleted.value = false
+  }
+
+  fun authenticateBiometricOfficer(onResult: (Boolean, String?) -> Unit) {
+    viewModelScope.launch {
+      val phone = sessionManager.biometricOfficerPhone.ifBlank {
+        com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.phoneNumber.orEmpty()
+      }
+      val identity = repository.getIdentityByPhone(phone)
+      val user = identity?.let { repository.getUserById(it.id) }
+      if (!sessionManager.isBiometricEnabled || identity == null || user == null) {
+        onResult(false, "Sign in with your phone and PIN first to enable this account.")
+        return@launch
+      }
+      val group = repository.getGroupByTreasurer(identity.id)
+      _userPhone.value = identity.phone
+      _userRole.value = user.role
+      _selectedGroupId.value = group?.id.orEmpty()
+      sessionManager.saveSession(identity.phone, user.role, identity.displayName, group?.id.orEmpty(), user.pinHash, identity.id)
+      _isAuthenticated.value = true
+      _isOnboardingCompleted.value = true
+      _isAppLocked.value = false
+      onResult(true, null)
+    }
   }
 
   fun deleteAccount() {

@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.NeutralBorderStrong
+import com.example.ui.theme.SkyBlue
+
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -64,6 +68,7 @@ import com.example.ui.theme.PureWhite
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.ui.theme.WhatsAppBrandGreen
 import kotlinx.coroutines.launch
 
 data class WalkthroughSlide(
@@ -89,7 +94,7 @@ fun FeatureWalkthroughScreen(
       subtitle = "Isolated Context for Each Savings Group",
       description = "Every Susu savings group has dedicated WhatsApp intelligence. When members like Akosua ask for dues, the bot knows their exact group, weekly rate, and paid status.",
       icon = Icons.AutoMirrored.Filled.Chat,
-      accentColor = Color(0xFF25D366),
+      accentColor = WhatsAppBrandGreen,
       previewBadge = "WhatsApp Meta Cloud API",
       highlights = listOf(
         "Strict per-group isolation & dues matching",
@@ -131,7 +136,7 @@ fun FeatureWalkthroughScreen(
       subtitle = "Zero Manual Chasing for Treasurers",
       description = "Automate Friday collection nudges, targeted unpaid reminders, and Sunday executive summaries delivered directly via WhatsApp to keep everyone on track.",
       icon = Icons.Default.NotificationsActive,
-      accentColor = Color(0xFF0284C7),
+      accentColor = SkyBlue,
       previewBadge = "Cloud Run & Cloud Scheduler",
       highlights = listOf(
         "Automated Friday payment reminders",
@@ -175,7 +180,7 @@ fun FeatureWalkthroughScreen(
               modifier = Modifier
                 .size(if (isSelected) 24.dp else 8.dp, 8.dp)
                 .clip(RoundedCornerShape(4.dp))
-                .background(if (isSelected) ForestGreenPrimary else Color(0xFFCBD5E1))
+                .background(if (isSelected) ForestGreenPrimary else NeutralBorderStrong)
             )
           }
         }

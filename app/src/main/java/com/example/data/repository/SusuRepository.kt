@@ -34,6 +34,8 @@ data class VerificationReport(
 
 class SusuRepository(private val database: SusuDatabase) {
   private val dao = database.susuDao()
+  var hasPendingCloudMessages: Boolean = false
+    private set
 
   val allGroups: Flow<List<GroupEntity>> = dao.getAllGroups()
   val allPayments: Flow<List<PaymentEntity>> = dao.getAllPayments()
@@ -42,6 +44,7 @@ class SusuRepository(private val database: SusuDatabase) {
   val unsyncedPaymentsCount: Flow<Int> = dao.getUnsyncedPaymentsCount()
 
   suspend fun syncAllOfflineDataToCloud(): Int {
+    hasPendingCloudMessages = false
     var uploaded = 0
     // Resend all payments to recover records falsely marked synced by older versions.
     // The server checks immutable payment IDs and idempotency keys on every retry.
@@ -57,13 +60,14 @@ class SusuRepository(private val database: SusuDatabase) {
       val payments = allPayments.filter { it.cycleId in cycleIds }
       val receiptIds = dao.getQueuedReceipts().map { it.id.removePrefix("receipt-") }.filter { id -> payments.any { it.id == id } }
       val response = SusuApiClient.getApiService().syncGroup(
-        com.example.data.remote.SyncGroupRequest(group, treasurer, dao.getMembersForGroupOnce(group.id), cycles, payments, receiptIds)
+        com.example.data.remote.SyncGroupRequest(group.copy(schedule = group.schedule.lowercase(java.util.Locale.ROOT)), treasurer, dao.getMembersForGroupOnce(group.id), cycles, payments, receiptIds)
       )
       if (!response.isSuccessful) error("Cloud sync failed (HTTP ${response.code()}). Records remain on this device.")
       val acknowledged = response.body()?.acknowledgedPaymentIds ?: error("Cloud sync returned no acknowledgement")
       check(acknowledged.toSet() == payments.map { it.id }.toSet()) { "Cloud sync acknowledgement is incomplete" }
       dao.markPaymentsSynced(acknowledged)
       response.body()?.acceptedReceiptIds.orEmpty().forEach { dao.updateMessageStatus("receipt-$it", "sent") }
+      hasPendingCloudMessages = hasPendingCloudMessages || (response.body()?.pendingNotificationCount ?: 0) > 0 || (response.body()?.pendingReceiptCount ?: 0) > 0
       uploaded += payments.count { !it.isSynced }
     }
     return uploaded
@@ -74,7 +78,7 @@ class SusuRepository(private val database: SusuDatabase) {
 
   private fun nextDueDate(schedule: String = "weekly"): String {
     val calendar = java.util.Calendar.getInstance()
-    if (schedule == "monthly") calendar.add(java.util.Calendar.MONTH, 1)
+    if (schedule.equals("monthly", ignoreCase = true)) calendar.add(java.util.Calendar.MONTH, 1)
     else do { calendar.add(java.util.Calendar.DAY_OF_MONTH, 1) } while (calendar.get(java.util.Calendar.DAY_OF_WEEK) != java.util.Calendar.FRIDAY)
     return java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(calendar.time)
   }
@@ -91,7 +95,7 @@ class SusuRepository(private val database: SusuDatabase) {
       val activeMembers = dao.getActiveMembersForGroup(groupId)
       var inserted = 0
 
-      claims.filter { it.state == "pending" }.forEach { cloudClaim ->
+      claims.forEach { cloudClaim ->
         val localCycleId = dao.getAllCyclesOnce(groupId).firstOrNull { cloudId(it.id) == cloudClaim.cycleId }?.id
           ?: return@forEach
 
@@ -103,8 +107,7 @@ class SusuRepository(private val database: SusuDatabase) {
         }
         val localMember = memberById ?: memberByPhone ?: return@forEach
 
-        val rowId = dao.insertCloudClaimIfAbsent(
-          ClaimEntity(
+        val incoming = ClaimEntity(
             id = cloudClaim.id,
             cycleId = localCycleId,
             memberId = localMember.id,
@@ -114,8 +117,15 @@ class SusuRepository(private val database: SusuDatabase) {
             evidenceMoMoId = cloudClaim.evidenceMoMoId,
             state = cloudClaim.state
           )
-        )
-        if (rowId != -1L) inserted += 1
+        database.withTransaction {
+          val existing = dao.getClaimById(incoming.id)
+          if (existing == null) {
+            dao.insertCloudClaimIfAbsent(incoming)
+            if (incoming.state == "pending") inserted += 1
+          } else if (existing.state == "pending") {
+            dao.updateClaim(incoming)
+          }
+        }
       }
 
       inserted
@@ -135,6 +145,8 @@ class SusuRepository(private val database: SusuDatabase) {
 
   fun getPendingClaims(cycleId: String): Flow<List<ClaimEntity>> =
     dao.getPendingClaimsForCycle(cycleId)
+
+  fun getPendingGroupClaims(groupId: String): Flow<List<ClaimEntity>> = dao.getPendingClaimsForGroup(groupId)
 
   suspend fun recordPayment(
     groupId: String,
@@ -157,7 +169,7 @@ class SusuRepository(private val database: SusuDatabase) {
       ?: throw IllegalArgumentException("Member not found: $memberId")
     val paymentCycle = dao.getCycleById(cycleId) ?: error("Cycle not found")
     require(member.groupId == groupId && paymentCycle.groupId == groupId) { "Payment records must belong to the same group" }
-    require(paymentCycle.state == "open") { "The cycle is closed" }
+    require(paymentCycle.state == "open" || paymentCycle.state == "closed") { "This week cannot accept payments" }
     require(amount.isFinite() && amount > 0 && kotlin.math.abs(amount * 100 - kotlin.math.round(amount * 100)) < 0.0001) { "Enter a positive amount with at most two decimals" }
 
     // Fetch previous hash for SHA-256 chain
@@ -469,7 +481,11 @@ class SusuRepository(private val database: SusuDatabase) {
     dao.insertMessage(notice)
   }
 
-  suspend fun startNewCycle(groupId: String, currentCycle: CycleEntity) = database.withTransaction {
+  suspend fun startNewCycle(groupId: String, currentCycle: CycleEntity, amount: Double = currentCycle.amountDue, dueDate: String? = null) = database.withTransaction {
+    require(dao.getCycleById(currentCycle.id)?.state == "open") { "This week is already closed. Refresh the ledger." }
+    require(amount.isFinite() && amount > 0) { "Enter a positive contribution amount" }
+    val nextDate = dueDate ?: nextDueDate(dao.getGroupById(groupId)?.schedule ?: "weekly")
+    require(nextDate.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) { "Use a date in YYYY-MM-DD format" }
     // Close current cycle
     dao.updateCycle(
       currentCycle.copy(
@@ -484,8 +500,8 @@ class SusuRepository(private val database: SusuDatabase) {
     val nextCycle = CycleEntity(
       groupId = groupId,
       number = nextNumber,
-      amountDue = currentCycle.amountDue,
-      dueDate = nextDueDate(dao.getGroupById(groupId)?.schedule ?: "weekly"),
+      amountDue = amount,
+      dueDate = nextDate,
       state = "open"
     )
     dao.insertCycle(nextCycle)
@@ -496,8 +512,8 @@ class SusuRepository(private val database: SusuDatabase) {
         phone = "Broadcast: All Members",
         senderName = "SusuBot Broadcast",
         direction = "OUT",
-        body = "Week $nextNumber of Nima Market Susu is now OPEN! Due date is Friday. Send 'PAID' on WhatsApp when you send your contribution.",
-        metaStatus = "delivered"
+        body = "Week $nextNumber is open. Member announcements await cloud dispatch to opted-in WhatsApp numbers.",
+        metaStatus = "queued"
       )
     )
   }
@@ -1114,7 +1130,7 @@ class SusuRepository(private val database: SusuDatabase) {
       name = groupName.ifBlank { "Susu Group" },
       amount = amount,
       currency = "GHS",
-      schedule = schedule,
+      schedule = schedule.lowercase(java.util.Locale.ROOT),
       treasurerId = treasurerIdentityId,
       state = "active"
     )

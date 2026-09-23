@@ -1,10 +1,9 @@
 const db = require('../config/database');
 const { consumePairing } = require('./pairingService');
-const {
-  sendWhatsAppInteractiveMessage,
-  sendWhatsAppTextMessage,
-  logMessage,
-} = require('./whatsappService');
+const whatsapp = require('./whatsappService');
+const sendWhatsAppInteractiveMessage = (...args) => whatsapp.sendWhatsAppInteractiveMessage(...args);
+const sendWhatsAppTextMessage = (...args) => whatsapp.sendWhatsAppTextMessage(...args);
+const logMessage = (...args) => whatsapp.logMessage(...args);
 
 function normalizePhone(rawPhone) {
   const cleanPhone = String(rawPhone || '').replace(/[^0-9]/g, '');
@@ -162,7 +161,12 @@ async function promptForGroup(fromPhone, identityId, memberships) {
 }
 
 async function promptForAmount(fromPhone, identityId, membership) {
-  const amountDue = Number(membership.amount_due || membership.group_amount || 0);
+  const paid = membership.cycle_id ? (await db.query("SELECT COALESCE(SUM(amount_paid),0) AS total FROM payments WHERE cycle_id=$1 AND member_id=$2 AND status='confirmed'",[membership.cycle_id,membership.member_id])).rows[0].total : 0;
+  const amountDue = Math.max(0, Number(membership.amount_due || membership.group_amount || 0) - Number(paid));
+  if (membership.cycle_id && amountDue === 0) {
+    await sendWhatsAppTextMessage(fromPhone, `Week ${membership.cycle_number} is already fully paid. Reply PAID WEEK followed by the week number to choose another week.`, identityId);
+    return;
+  }
   await saveBotSession(identityId, {
     currentState: 'WAITING_CLAIM_AMOUNT',
     selectedGroupId: membership.group_id,
@@ -300,7 +304,7 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
   const { cleanPhone, formattedPhone } = normalizePhone(fromPhone);
   const identity = await resolveIdentity(fromPhone, formattedPhone);
   const identityId = identity.id;
-  const cleanText = String(messageBody || '').trim().toUpperCase();
+  const cleanText = String(messageBody || buttonPayload || '').trim().toUpperCase();
 
   await logMessage({
     identityId,
@@ -344,7 +348,14 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
     return;
   }
 
-  const memberships = await getActiveMemberships(identityId);
+  if (cleanText === 'DISCONNECT') {
+    const result=await db.query("UPDATE bot_pairings SET status='DISCONNECTED' WHERE status='PAIRED' AND group_id IN (SELECT id FROM groups WHERE treasurer_id=$1)",[identityId]);
+    await sendWhatsAppTextMessage(fromPhone,result.rowCount ? 'Your group bot is disconnected. Reconnect from SusuLedger to resume member commands.' : 'Only the verified treasurer can disconnect the group bot.',identityId);
+    return;
+  }
+  const allMemberships = await getActiveMemberships(identityId);
+  const connected=await db.query("SELECT DISTINCT group_id FROM bot_pairings WHERE status='PAIRED'");
+  const memberships = allMemberships.filter(m=>connected.rows.some(p=>p.group_id===m.group_id));
   const session = await getBotSession(identityId);
 
   if (cleanText === 'STOP' || cleanText === 'START' || cleanText === 'OK') {
@@ -359,6 +370,7 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
       fromPhone,
       `SusuLedger WhatsApp Assistant:\n\n` +
         `Reply PAID to submit a contribution claim\n` +
+        `Reply PAID WEEK 1 to settle an earlier week\n` +
         `Reply BALANCE to check your group balance\n` +
         `Reply PROGRESS to view current cycle status\n` +
         `Reply DUE for contribution details\n` +
@@ -373,13 +385,14 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
   if (memberships.length === 0) {
     await sendWhatsAppTextMessage(
       fromPhone,
-      `Welcome to SusuLedger. Your phone (${formattedPhone}) is known to the bot, but it is not attached to an active group yet. Ask your treasurer to add this number in the SusuLedger app.`,
+      allMemberships.length ? 'Your group WhatsApp bot is disconnected. Ask your treasurer to reconnect it in SusuLedger, then retry. No payment claim has been recorded.' : 'This WhatsApp number is not attached to an active group. Ask your treasurer to add your number in SusuLedger.',
       identityId
     );
     return;
   }
 
-  const isClaimStart = cleanText === 'PAID' || buttonPayload === 'CLAIM_PAID';
+  const weekRequest = /^PAID\s+WEEK\s+(\d+)$/.exec(cleanText);
+  const isClaimStart = cleanText === 'PAID' || Boolean(weekRequest) || buttonPayload === 'CLAIM_PAID';
   if (cleanText === 'SWITCH') {
     await promptForGroup(fromPhone,identityId,memberships);
     return;
@@ -388,6 +401,16 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
   const isCustomClaim = buttonPayload === 'CLAIM_CUSTOM';
   const hasMomoEvidence = cleanText.startsWith('MOMO:') || cleanText.includes('MOMO');
   const selectedMembership = findMembershipSelection(cleanText, buttonPayload, memberships, session);
+  if (selectedMembership && (weekRequest || (!isClaimStart && session?.context_data?.cycleId))) {
+    const target = weekRequest
+      ? await db.query('SELECT * FROM cycles WHERE group_id=$1 AND number=$2',[selectedMembership.group_id,Number(weekRequest[1])])
+      : await db.query('SELECT * FROM cycles WHERE group_id=$1 AND id=$2',[selectedMembership.group_id,session.context_data.cycleId]);
+    if (!target.rows.length) {
+      await sendWhatsAppTextMessage(fromPhone, 'That week was not found. Reply PAID for the current week or PAID WEEK followed by an existing week number.',identityId);
+      return;
+    }
+    Object.assign(selectedMembership,{cycle_id:target.rows[0].id,cycle_number:target.rows[0].number,amount_due:target.rows[0].amount_due});
+  }
   if (!selectedMembership && session?.current_state === 'WAITING_GROUP_SELECTION') {
     await promptForGroup(fromPhone, identityId, memberships);
     return;

@@ -16,6 +16,30 @@ import org.robolectric.annotation.Config
 @Config(sdk = [36], application = android.app.Application::class)
 class GroupStorageTest {
   @Test
+  fun `confirmation resolves claim atomically and late payment stays in original week`() = runBlocking {
+    val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), SusuDatabase::class.java).allowMainThreadQueries().build()
+    try {
+      val repo = SusuRepository(db)
+      val group = repo.createNewGroupWithMembers("Claim Test",50.0,treasurerPhone="240000002",treasurerName="Officer",members=listOf("Member" to "0250000002"),treasurerPin="7391")
+      val dao = db.susuDao()
+      val week = requireNotNull(dao.getActiveCycleOnce(group.id))
+      val member = dao.getMembersForGroupOnce(group.id).single()
+      val claim = com.example.data.local.ClaimEntity(cycleId=week.id,memberId=member.id,memberName=member.alias,memberPhone=member.phone,claimedAmount=25.50)
+      dao.insertClaim(claim)
+      repo.startNewCycle(group.id,week,60.0,"2026-10-02")
+      val payment = repo.recordPayment(group.id,week.id,member.id,25.50,"CASH",confirmedBy=group.treasurerId,sendWhatsAppReceipt=false,associatedClaimId=claim.id)
+      assertEquals(week.id,payment.cycleId)
+      assertEquals("confirmed",dao.getClaimById(claim.id)?.state)
+      assertEquals(-1L,dao.insertCloudClaimIfAbsent(claim))
+      assertEquals("confirmed",dao.getClaimById(claim.id)?.state)
+      assertTrue(runCatching { repo.recordPayment(group.id,week.id,member.id,25.50,"CASH",confirmedBy=group.treasurerId,sendWhatsAppReceipt=false,associatedClaimId=claim.id) }.isFailure)
+      assertEquals(1,dao.getAllPaymentsOnce().size)
+      assertEquals(60.0,dao.getActiveCycleOnce(group.id)!!.amountDue,0.001)
+      assertEquals(50.0,dao.getCycleById(week.id)!!.amountDue,0.001)
+    } finally { db.close() }
+  }
+
+  @Test
   fun `group creation and payment produce durable balanced records`() = runBlocking {
     val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), SusuDatabase::class.java).allowMainThreadQueries().build()
     try {

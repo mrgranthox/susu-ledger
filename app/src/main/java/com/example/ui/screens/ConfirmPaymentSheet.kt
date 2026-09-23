@@ -1,5 +1,12 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.NeutralSurfaceLight
+import com.example.ui.theme.WarningAmber
+import com.example.ui.theme.WarningAmberBg
+import com.example.ui.theme.WarningAmberBorder
+import com.example.ui.theme.WarningAmberText
+
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -74,6 +81,9 @@ fun ConfirmPaymentSheet(
   initialClaim: ClaimEntity?,
   cycleNumber: Int,
   cycleDueAmount: Double,
+  availableCycles: List<com.example.data.local.CycleEntity> = emptyList(),
+  selectedCycleId: String? = null,
+  onSelectCycle: (com.example.data.local.CycleEntity) -> Unit = {},
   onDismiss: () -> Unit,
   onConfirm: (
     memberId: String,
@@ -94,13 +104,17 @@ fun ConfirmPaymentSheet(
   val memberFirstName = selectedMember?.alias?.split(" ")?.firstOrNull() ?: "Member"
 
   var amountText by remember {
-    mutableStateOf(String.format(java.util.Locale.US, "%.0f", initialClaim?.claimedAmount ?: cycleDueAmount))
+    mutableStateOf(String.format(java.util.Locale.US, "%.2f", initialClaim?.claimedAmount ?: cycleDueAmount))
   }
 
   var selectedMethod by remember { mutableStateOf("MOMO") }
   var momoRef by remember { mutableStateOf(initialClaim?.evidenceMoMoId ?: "") }
   var sendReceipt by remember { mutableStateOf(true) }
   var memberDropdownExpanded by remember { mutableStateOf(false) }
+  var weekDropdownExpanded by remember { mutableStateOf(false) }
+  androidx.compose.runtime.LaunchedEffect(selectedCycleId) {
+    if (initialClaim == null) amountText = String.format(java.util.Locale.US, "%.2f", cycleDueAmount)
+  }
 
   val parsedAmount by remember(amountText) {
     derivedStateOf { amountText.toDoubleOrNull() ?: cycleDueAmount }
@@ -138,6 +152,19 @@ fun ConfirmPaymentSheet(
 
       Spacer(modifier = Modifier.height(20.dp))
 
+      androidx.compose.foundation.layout.Box {
+        androidx.compose.material3.TextButton(onClick = { weekDropdownExpanded = true }, enabled = initialClaim == null) {
+          Text("Week $cycleNumber" + if (availableCycles.find { it.id == selectedCycleId }?.state == "closed") " - late payment" else "")
+        }
+        androidx.compose.material3.DropdownMenu(expanded = weekDropdownExpanded, onDismissRequest = { weekDropdownExpanded = false }) {
+          availableCycles.sortedByDescending { it.number }.forEach { week ->
+            androidx.compose.material3.DropdownMenuItem(text = { Text("Week ${week.number}" + if (week.state == "closed") " - late payment" else "") }, onClick = {
+              onSelectCycle(week)
+              weekDropdownExpanded = false
+            })
+          }
+        }
+      }
       // Large black amount + editable amount field
       Row(
         modifier = Modifier.fillMaxWidth(),
@@ -161,14 +188,14 @@ fun ConfirmPaymentSheet(
         // Quick indicator pill
         val isFullPayment = parsedAmount >= cycleDueAmount
         Surface(
-          color = if (isFullPayment) ForestGreenLightFill else Color(0xFFFEF3C7),
+          color = if (isFullPayment) ForestGreenLightFill else WarningAmberBg,
           shape = RoundedCornerShape(16.dp),
-          border = BorderStroke(1.dp, if (isFullPayment) ForestGreenPrimary.copy(alpha = 0.3f) else Color(0xFFF59E0B))
+          border = BorderStroke(1.dp, if (isFullPayment) ForestGreenPrimary.copy(alpha = 0.3f) else WarningAmberBorder)
         ) {
           Text(
             text = if (isFullPayment) "FULL DUES (100%)" else "PARTIAL INSTALLMENT",
             style = MaterialTheme.typography.labelSmall.copy(
-              color = if (isFullPayment) ForestGreenPrimary else Color(0xFF92400E),
+              color = if (isFullPayment) ForestGreenPrimary else WarningAmberText,
               fontWeight = FontWeight.Bold,
               fontSize = 10.sp
             ),
@@ -218,7 +245,7 @@ fun ConfirmPaymentSheet(
               .weight(1f)
               .clickable { amountText = value },
             shape = RoundedCornerShape(6.dp),
-            color = if (isSelected) ForestGreenLightFill else Color(0xFFF8FAFC),
+            color = if (isSelected) ForestGreenLightFill else NeutralSurfaceLight,
             border = BorderStroke(1.dp, if (isSelected) ForestGreenPrimary else BorderGrey)
           ) {
             Box(
@@ -243,7 +270,7 @@ fun ConfirmPaymentSheet(
       val remainingBalance = (cycleDueAmount - parsedAmount).coerceAtLeast(0.0)
       Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = Color(0xFFF8FAFC),
+        color = NeutralSurfaceLight,
         shape = RoundedCornerShape(8.dp),
         border = BorderStroke(1.dp, BorderGrey)
       ) {
@@ -255,15 +282,15 @@ fun ConfirmPaymentSheet(
           verticalAlignment = Alignment.CenterVertically
         ) {
           Text(
-            text = "Week $cycleNumber Dues: GHS ${String.format(java.util.Locale.US, "%.2f", cycleDueAmount)}",
+            text = "Week $cycleNumber Dues: GHS ${String.format(java.util.Locale.US, "%.0f", cycleDueAmount)}",
             fontSize = 11.sp,
             color = TextSecondary
           )
           Text(
-            text = if (remainingBalance <= 0) "Fully Settled" else "Remaining: GHS ${String.format(java.util.Locale.US, "%.2f", remainingBalance)}",
+            text = if (remainingBalance <= 0) "Fully Settled" else "Remaining: GHS ${String.format(java.util.Locale.US, "%.0f", remainingBalance)}",
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
-            color = if (remainingBalance <= 0) ForestGreenPrimary else Color(0xFFD97706)
+            color = if (remainingBalance <= 0) ForestGreenPrimary else WarningAmber
           )
         }
       }

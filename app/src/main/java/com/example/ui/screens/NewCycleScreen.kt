@@ -16,22 +16,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,18 +38,19 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.components.StandardNavTopBar
 import com.example.ui.theme.BorderGrey
 import com.example.ui.theme.ForestGreenPrimary
 import com.example.ui.theme.HeroAmber
 import com.example.ui.theme.HeroAmberBg
 import com.example.ui.theme.HeroAmberBorder
 import com.example.ui.theme.HeroAmberText
-import com.example.ui.theme.LineIconBlack
 import com.example.ui.theme.PureWhite
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import java.text.SimpleDateFormat
+import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewCycleScreen(
   currentOpenWeek: Int? = 12,
@@ -66,29 +62,16 @@ fun NewCycleScreen(
 ) {
   var weekNumberText by remember { mutableStateOf("Week $defaultNextWeekNumber") }
   var amountText by remember { mutableStateOf("GHS ${defaultAmount.toInt()}") }
-  var dueDateText by remember { mutableStateOf("Next Friday, Sep 25") }
+  var dueDateText by remember { mutableStateOf(nextFridayLabel()) }
 
   val isPreviousWeekOpen = currentOpenWeek != null
 
   Scaffold(
     containerColor = PureWhite,
     topBar = {
-      TopAppBar(
-        title = {
-          Text(
-            text = "New Week",
-            style = MaterialTheme.typography.titleLarge.copy(
-              fontWeight = FontWeight.Bold,
-              color = TextPrimary
-            )
-          )
-        },
-        navigationIcon = {
-          IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = LineIconBlack)
-          }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = PureWhite)
+      StandardNavTopBar(
+        title = "New Week",
+        onBackClick = onBack
       )
     }
   ) { paddingValues ->
@@ -102,11 +85,12 @@ fun NewCycleScreen(
     ) {
       Column(modifier = Modifier.fillMaxWidth()) {
         // Prefilled fields: "Week 13" (editable), Amount "GHS 50" (editable), Due date picker defaulting to next Friday
-        Text("Collection cycle", style = MaterialTheme.typography.labelMedium.copy(color = TextPrimary))
+        Text("Collection week", style = MaterialTheme.typography.labelMedium.copy(color = TextPrimary))
         Spacer(modifier = Modifier.height(6.dp))
         OutlinedTextField(
           value = weekNumberText,
           onValueChange = { weekNumberText = it },
+          readOnly = true,
           modifier = Modifier.fillMaxWidth().testTag("new_cycle_week_input"),
           singleLine = true,
           shape = RoundedCornerShape(8.dp),
@@ -211,4 +195,14 @@ fun NewCycleScreen(
       }
     }
   }
+}
+
+/** Computes the label for the upcoming Friday (or today if it is Friday). */
+private fun nextFridayLabel(): String {
+  val calendar = java.util.Calendar.getInstance()
+  val dayOfWeek = calendar.get(java.util.Calendar.DAY_OF_WEEK)
+  var daysUntilFriday = java.util.Calendar.FRIDAY - dayOfWeek
+  if (daysUntilFriday <= 0) daysUntilFriday += 7
+  calendar.add(java.util.Calendar.DAY_OF_YEAR, daysUntilFriday)
+  return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(calendar.time)
 }

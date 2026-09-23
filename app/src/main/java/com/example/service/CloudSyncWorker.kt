@@ -25,7 +25,7 @@ class CloudSyncWorker(context: Context, parameters: WorkerParameters) : Coroutin
     try {
       repository.syncAllOfflineDataToCloud()
       for (group in repository.getAllGroupsOnce()) repository.syncPendingClaimsFromCloud(group.id)
-      if (database.susuDao().getQueuedReceipts().isNotEmpty()) Result.retry() else Result.success()
+      if (repository.hasPendingCloudMessages || database.susuDao().getQueuedReceipts().isNotEmpty()) Result.retry() else Result.success()
     } catch (cancelled: CancellationException) {
       throw cancelled
     } catch (_: Exception) {

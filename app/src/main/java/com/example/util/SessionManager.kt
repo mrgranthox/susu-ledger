@@ -37,6 +37,9 @@ class SessionManager(context: Context) {
     get() = prefs.getString(KEY_LOGGED_IN_PHONE, "") ?: ""
     set(value) = prefs.edit().putString(KEY_LOGGED_IN_PHONE, value).apply()
 
+  val biometricOfficerPhone: String
+    get() = prefs.getString("biometric_officer_phone", "") ?: ""
+
   var loggedInRole: String
     get() = prefs.getString(KEY_LOGGED_IN_ROLE, "treasurer") ?: "treasurer"
     set(value) = prefs.edit().putString(KEY_LOGGED_IN_ROLE, value).apply()
@@ -102,6 +105,7 @@ class SessionManager(context: Context) {
     val editor = prefs.edit()
       .putBoolean(KEY_IS_ONBOARDED, true)
       .putString(KEY_LOGGED_IN_PHONE, phone)
+      .putString("biometric_officer_phone", phone)
       .putString(KEY_LOGGED_IN_ROLE, role)
       .putString(KEY_OFFICER_NAME, name)
       .putString(KEY_ACTIVE_GROUP_ID, groupId)
@@ -121,6 +125,7 @@ class SessionManager(context: Context) {
 
   fun clearSession() {
     prefs.edit()
+      .putString("biometric_officer_phone", biometricOfficerPhone.ifBlank { loggedInPhone })
       .remove(KEY_LOGGED_IN_PHONE)
       .remove(KEY_LOGGED_IN_ROLE)
       .remove(KEY_OFFICER_NAME)

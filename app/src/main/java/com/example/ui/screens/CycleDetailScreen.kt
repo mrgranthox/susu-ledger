@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
@@ -26,9 +25,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -36,8 +33,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.MemberEntity
+import com.example.ui.components.StandardNavTopBar
 import com.example.ui.theme.BorderGrey
 import com.example.ui.theme.ErrorBorderRed
 import com.example.ui.theme.ErrorRed
@@ -67,7 +63,7 @@ import com.example.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
 enum class CycleFilterTab {
-  ALL, PAID, PENDING, DISPUTED
+  ALL, PAID, PENDING
 }
 
 data class CycleMemberStatus(
@@ -78,16 +74,17 @@ data class CycleMemberStatus(
   val disputeReason: String? = null
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CycleDetailScreen(
   cycleNumber: Int = 12,
   dueDate: String = "Friday",
+  cycleAmount: Double = 50.0,
   members: List<MemberEntity>,
   paidMemberIds: Set<String>,
   onBack: () -> Unit,
   onMarkPaid: (MemberEntity) -> Unit,
-  onCloseWeek: () -> Unit
+  onCloseWeek: () -> Unit,
+  onSendReminder: () -> Unit = {}
 ) {
   var selectedTab by remember { mutableStateOf(CycleFilterTab.ALL) }
   var showAllMembersModal by remember { mutableStateOf(false) }
@@ -112,14 +109,12 @@ fun CycleDetailScreen(
 
   val paidCount = cycleMemberStatuses.count { it.isPaid }
   val pendingCount = cycleMemberStatuses.count { !it.isPaid && !it.isDisputed }
-  val disputedCount = cycleMemberStatuses.count { it.isDisputed }
-  val confirmedAmount = paidCount * 50
+  val confirmedAmount = paidCount * cycleAmount
 
   val filteredMembers = when (selectedTab) {
     CycleFilterTab.ALL -> cycleMemberStatuses
     CycleFilterTab.PAID -> cycleMemberStatuses.filter { it.isPaid }
     CycleFilterTab.PENDING -> cycleMemberStatuses.filter { !it.isPaid && !it.isDisputed }
-    CycleFilterTab.DISPUTED -> cycleMemberStatuses.filter { it.isDisputed }
   }
 
   // Maximum 4 rows visible, then "View all"
@@ -129,22 +124,9 @@ fun CycleDetailScreen(
     containerColor = PureWhite,
     snackbarHost = { SnackbarHost(snackbarHostState) },
     topBar = {
-      TopAppBar(
-        title = {
-          Text(
-            text = "Week $cycleNumber — Due $dueDate",
-            style = MaterialTheme.typography.titleLarge.copy(
-              fontWeight = FontWeight.Bold,
-              color = TextPrimary
-            )
-          )
-        },
-        navigationIcon = {
-          IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = LineIconBlack)
-          }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = PureWhite)
+      StandardNavTopBar(
+        title = "Week $cycleNumber — Due $dueDate",
+        onBackClick = onBack
       )
     },
     bottomBar = {
@@ -162,8 +144,9 @@ fun CycleDetailScreen(
         ) {
           Button(
             onClick = {
+              onSendReminder()
               coroutineScope.launch {
-                snackbarHostState.showSnackbar("WhatsApp reminder queued for $pendingCount pending members.")
+                snackbarHostState.showSnackbar("WhatsApp reminder sent to $pendingCount pending members.")
               }
             },
             modifier = Modifier
@@ -226,7 +209,6 @@ fun CycleDetailScreen(
             CycleFilterTab.ALL -> "All (${cycleMemberStatuses.size})"
             CycleFilterTab.PAID -> "Paid ($paidCount)"
             CycleFilterTab.PENDING -> "Pending ($pendingCount)"
-            CycleFilterTab.DISPUTED -> "Disputed ($disputedCount)"
           }
 
           Box(

@@ -1,5 +1,14 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.DangerRed
+import com.example.ui.theme.NeutralSurfaceLight
+import com.example.ui.theme.NeutralSurfaceMedium
+import com.example.ui.theme.WarningAmber
+import com.example.ui.theme.WarningAmberBg
+import com.example.ui.theme.WarningAmberBorder
+import com.example.ui.theme.WarningAmberText
+
+
 import android.content.Context
 import android.widget.Toast
 import com.example.ui.components.StandardNavTopBar
@@ -106,6 +115,7 @@ fun MoreSettingsScreen(
   onUpdateContributionAmount: (newAmount: Double, applyToCurrentCycle: Boolean, reason: String) -> Unit = { _, _, _ -> },
   onRenameGroup: (newName: String) -> Unit = {},
   onOpenPairingSheet: () -> Unit = {},
+  isBotConnected: Boolean = false,
   onOpenWhatsAppSimulator: () -> Unit = {},
   onSignOut: () -> Unit = {},
   onDeleteAccount: () -> Unit = {},
@@ -240,7 +250,7 @@ fun MoreSettingsScreen(
         ) {
           Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp))
           Spacer(modifier = Modifier.width(8.dp))
-          Text("WhatsApp Bot Pairing (Connect Members)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+          Text(if (isBotConnected) "Reconnect WhatsApp" else "Connect WhatsApp", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
         }
 
         Spacer(modifier = Modifier.height(18.dp))
@@ -375,7 +385,7 @@ fun MoreSettingsScreen(
             .fillMaxWidth()
             .testTag("enterprise_subscription_card"),
           colors = CardDefaults.cardColors(containerColor = PureWhite),
-          border = BorderStroke(1.5.dp, if (isSubscriptionActive) ForestGreenPrimary else Color(0xFFD97706).copy(alpha = 0.4f)),
+          border = BorderStroke(1.5.dp, if (isSubscriptionActive) ForestGreenPrimary else WarningAmber.copy(alpha = 0.4f)),
           shape = RoundedCornerShape(12.dp)
         ) {
           Column(modifier = Modifier.padding(18.dp)) {
@@ -388,13 +398,13 @@ fun MoreSettingsScreen(
                 Box(
                   modifier = Modifier
                     .size(28.dp)
-                    .background(Color(0xFFFEF3C7), CircleShape),
+                    .background(WarningAmberBg, CircleShape),
                   contentAlignment = Alignment.Center
                 ) {
                   Icon(
                     imageVector = Icons.Default.Security,
                     contentDescription = null,
-                    tint = Color(0xFFD97706),
+                    tint = WarningAmber,
                     modifier = Modifier.size(16.dp)
                   )
                 }
@@ -409,7 +419,7 @@ fun MoreSettingsScreen(
               }
 
               Surface(
-                color = if (isSubscriptionActive) ForestGreenLightFill else Color(0xFFFEF3C7),
+                color = if (isSubscriptionActive) ForestGreenLightFill else WarningAmberBg,
                 shape = RoundedCornerShape(6.dp)
               ) {
                 Text(
@@ -417,7 +427,7 @@ fun MoreSettingsScreen(
                   style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (isSubscriptionActive) ForestGreenPrimary else Color(0xFF92400E)
+                    color = if (isSubscriptionActive) ForestGreenPrimary else WarningAmberText
                   ),
                   modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 )
@@ -437,7 +447,7 @@ fun MoreSettingsScreen(
             Row(
               modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
+                .background(NeutralSurfaceLight, RoundedCornerShape(8.dp))
                 .padding(horizontal = 12.dp, vertical = 8.dp),
               horizontalArrangement = Arrangement.SpaceBetween,
               verticalAlignment = Alignment.CenterVertically
@@ -490,7 +500,6 @@ fun MoreSettingsScreen(
             Spacer(modifier = Modifier.width(12.dp))
             Text("English", style = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary, fontWeight = FontWeight.SemiBold))
           }
-          Text("Twi (Coming soon)", style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary))
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -535,7 +544,7 @@ fun MoreSettingsScreen(
               Box(
                 modifier = Modifier
                   .size(36.dp)
-                  .background(Color(0xFFF1F5F9), CircleShape),
+                  .background(NeutralSurfaceMedium, CircleShape),
                 contentAlignment = Alignment.Center
               ) {
                 Icon(Icons.Default.Group, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(20.dp))
@@ -543,7 +552,7 @@ fun MoreSettingsScreen(
               Spacer(modifier = Modifier.width(12.dp))
               Column {
                 Text("Treasurer Account", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 14.sp)
-                Text("+233 24 123 4567 • Primary Officer", fontSize = 12.sp, color = TextSecondary)
+                Text("Active Session • Primary Officer", fontSize = 12.sp, color = TextSecondary)
               }
             }
 
@@ -556,12 +565,12 @@ fun MoreSettingsScreen(
                 .fillMaxWidth()
                 .height(44.dp)
                 .testTag("settings_sign_out_button"),
-              colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF1F5F9)),
+              colors = ButtonDefaults.buttonColors(containerColor = NeutralSurfaceMedium),
               shape = RoundedCornerShape(8.dp)
             ) {
-              Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Sign Out", tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
+              Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Sign Out", tint = DangerRed, modifier = Modifier.size(18.dp))
               Spacer(modifier = Modifier.width(8.dp))
-              Text("Sign Out of Session", color = Color(0xFFDC2626), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+              Text("Sign Out of Session", color = DangerRed, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -637,6 +646,12 @@ fun MoreSettingsScreen(
           shape = RoundedCornerShape(8.dp)
         ) {
           Column(modifier = Modifier.padding(14.dp)) {
+            if (filteredAuditLogs.isEmpty()) {
+              Text(
+                text = "No activity recorded yet. Reversals, PIN events, and week closures will appear here.",
+                style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary)
+              )
+            }
             displayAuditLogs.forEachIndexed { index, entry ->
               Row(
                 modifier = Modifier
@@ -987,7 +1002,7 @@ fun MoreSettingsScreen(
   // Paystack MoMo Subscription Dialog
   if (showPaystackModal) {
     var selectedNetwork by remember { mutableStateOf("MTN") }
-    var billingPhone by remember { mutableStateOf("024 123 4567") }
+    var billingPhone by remember { mutableStateOf("") }
     var isSimulatingUssd by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -1004,6 +1019,12 @@ fun MoreSettingsScreen(
           Text(
             text = "Group Subscription: GHS 40.00 / month",
             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, color = TextPrimary)
+          )
+          Spacer(modifier = Modifier.height(4.dp))
+          Text(
+            text = "Sandbox preview — no real charges are made.",
+            fontSize = 11.sp,
+            color = TextSecondary
           )
           Text(
             text = "Automated WhatsApp receipts, weekly digest broadcasting, and tamper-evident ledger archiving.",
@@ -1088,7 +1109,7 @@ fun MoreSettingsScreen(
             } else {
               isSubscriptionActive = true
               showPaystackModal = false
-              Toast.makeText(context, "Subscription active! Paid GHS 40.00 via $selectedNetwork MoMo", Toast.LENGTH_LONG).show()
+              Toast.makeText(context, "Sandbox: subscription activated (no real charge).", Toast.LENGTH_LONG).show()
             }
           },
           colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
@@ -1268,7 +1289,7 @@ fun MoreSettingsScreen(
       onDismissRequest = { showPauseGroupDialog = false },
       title = {
         Row(verticalAlignment = Alignment.CenterVertically) {
-          Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(24.dp))
+          Icon(Icons.Default.Warning, contentDescription = null, tint = WarningAmber, modifier = Modifier.size(24.dp))
           Spacer(modifier = Modifier.width(8.dp))
           Text("Pause Group Collections?", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
         }
@@ -1286,14 +1307,14 @@ fun MoreSettingsScreen(
           )
 
           Surface(
-            color = Color(0xFFFEF3C7),
+            color = WarningAmberBg,
             shape = RoundedCornerShape(8.dp),
-            border = BorderStroke(1.dp, Color(0xFFF59E0B))
+            border = BorderStroke(1.dp, WarningAmberBorder)
           ) {
             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-              Text("• Funds Protection: All past records remain sealed and verified.", fontSize = 11.sp, color = Color(0xFF92400E))
-              Text("• Automated Notice: A WhatsApp broadcast is sent immediately to all members explaining the pause.", fontSize = 11.sp, color = Color(0xFF92400E))
-              Text("• Easy Resume: Collections can be resumed anytime with a single tap.", fontSize = 11.sp, color = Color(0xFF92400E))
+              Text("• Funds Protection: All past records remain sealed and verified.", fontSize = 11.sp, color = WarningAmberText)
+              Text("• Automated Notice: A WhatsApp broadcast is sent immediately to all members explaining the pause.", fontSize = 11.sp, color = WarningAmberText)
+              Text("• Easy Resume: Collections can be resumed anytime with a single tap.", fontSize = 11.sp, color = WarningAmberText)
             }
           }
 
@@ -1317,7 +1338,7 @@ fun MoreSettingsScreen(
             showPauseGroupDialog = false
             onTogglePauseGroup(pauseReason)
           },
-          colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706))
+          colors = ButtonDefaults.buttonColors(containerColor = WarningAmber)
         ) {
           Text("Pause Group & Notify Members", color = PureWhite)
         }
@@ -1436,7 +1457,7 @@ fun MoreSettingsScreen(
                   .weight(1f)
                   .clickable { newDuesAmountText = amount },
                 shape = RoundedCornerShape(6.dp),
-                color = if (isSelected) ForestGreenLightFill else Color(0xFFF8FAFC),
+                color = if (isSelected) ForestGreenLightFill else NeutralSurfaceLight,
                 border = BorderStroke(1.dp, if (isSelected) ForestGreenPrimary else BorderGrey)
               ) {
                 Box(modifier = Modifier.padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
@@ -1480,7 +1501,7 @@ fun MoreSettingsScreen(
           }
 
           Surface(
-            color = Color(0xFFF1F5F9),
+            color = NeutralSurfaceMedium,
             shape = RoundedCornerShape(6.dp)
           ) {
             Text(
@@ -1562,7 +1583,7 @@ fun MoreSettingsScreen(
     AlertDialog(
       onDismissRequest = { showDeleteAccountDialog = false },
       title = {
-        Text("Delete Account & Purge Data?", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = Color(0xFFD32F2F)))
+        Text("Delete Account & Purge Data?", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = ErrorRed))
       },
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1582,7 +1603,7 @@ fun MoreSettingsScreen(
             showDeleteAccountDialog = false
             onDeleteAccount()
           },
-          colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+          colors = ButtonDefaults.buttonColors(containerColor = ErrorRed),
           modifier = Modifier.testTag("confirm_delete_account_btn")
         ) {
           Text("Delete My Account", color = PureWhite)

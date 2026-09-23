@@ -1,5 +1,11 @@
 package com.example.ui.components
 
+import com.example.ui.theme.NeutralSurfaceLight
+import com.example.ui.theme.NeutralSurfaceMedium
+import com.example.ui.theme.NeutralTrack
+import com.example.ui.theme.SoftGreenFill
+
+
 import android.app.Activity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -168,7 +174,7 @@ fun BiometricAuthDialog(
           modifier = Modifier
             .size(36.dp)
             .clip(CircleShape)
-            .background(Color(0xFFD4EBDD)),
+            .background(SoftGreenFill),
           contentAlignment = Alignment.Center
         ) {
           Icon(
@@ -185,7 +191,7 @@ fun BiometricAuthDialog(
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
           )
           Text(
-            text = "androidx.credentials Authentication",
+            text = "Officer Authorization",
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
             color = ForestGreenPrimary
@@ -209,7 +215,7 @@ fun BiometricAuthDialog(
           Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+            colors = CardDefaults.cardColors(containerColor = NeutralSurfaceLight),
             border = androidx.compose.foundation.BorderStroke(1.5.dp, BorderGrey)
           ) {
             Column(
@@ -344,7 +350,7 @@ fun BiometricAuthDialog(
                   modifier = Modifier
                     .size(20.dp)
                     .clip(CircleShape)
-                    .background(if (isFilled) ForestGreenPrimary else Color(0xFFE2E8F0))
+                    .background(if (isFilled) ForestGreenPrimary else NeutralTrack)
                     .border(1.5.dp, if (isFilled) ForestGreenPrimary else BorderGrey, CircleShape)
                 )
               }
@@ -453,7 +459,7 @@ private fun NumericKeypad(
                 .weight(1f)
                 .height(42.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFFF1F5F9))
+                .background(NeutralSurfaceMedium)
                 .clickable(onClick = onBackspace),
               contentAlignment = Alignment.Center
             ) {
@@ -470,7 +476,7 @@ private fun NumericKeypad(
                 .weight(1f)
                 .height(42.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFFF8FAFC))
+                .background(NeutralSurfaceLight)
                 .border(1.dp, BorderGrey, RoundedCornerShape(8.dp))
                 .clickable { onDigitClick(key) },
               contentAlignment = Alignment.Center

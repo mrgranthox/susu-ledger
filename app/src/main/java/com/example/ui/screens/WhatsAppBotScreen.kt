@@ -1,5 +1,14 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.NeutralSurfaceLight
+import com.example.ui.theme.NeutralSurfaceMedium
+import com.example.ui.theme.SkyBlue
+import com.example.ui.theme.TealDeep
+import com.example.ui.theme.WhatsAppBrandGreen
+import com.example.ui.theme.WhatsAppBubbleGreen
+import com.example.ui.theme.WhatsAppChatBg
+
+
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -52,6 +61,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -92,9 +102,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-val WhatsAppGreen = Color(0xFF25D366)
-val WhatsAppChatBg = Color(0xFFEFEAE2)
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WhatsAppBotScreen(
@@ -102,6 +109,8 @@ fun WhatsAppBotScreen(
   messages: List<MessageLogEntity>,
   members: List<MemberEntity>,
   pairingCode: String = "",
+  isBotConnected: Boolean = false,
+  connectionError: String? = null,
   cloudStatus: CloudSystemStatusResponse? = null,
   onBack: () -> Unit,
   onSendMessage: (phone: String, messageText: String) -> Unit,
@@ -149,7 +158,7 @@ fun WhatsAppBotScreen(
           Button(
             onClick = onOpenPairing,
             shape = RoundedCornerShape(8.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF1F5F9)),
+            colors = ButtonDefaults.buttonColors(containerColor = NeutralSurfaceMedium),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
             modifier = Modifier
               .height(34.dp)
@@ -157,7 +166,7 @@ fun WhatsAppBotScreen(
           ) {
             Icon(imageVector = Icons.Default.Smartphone, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(14.dp))
             Spacer(modifier = Modifier.width(4.dp))
-            Text("Pairing", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
+            Text(if (isBotConnected) "Reconnect" else "Connect", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
           }
         }
       )
@@ -170,6 +179,9 @@ fun WhatsAppBotScreen(
         .padding(paddingValues)
         .imePadding()
     ) {
+      if (connectionError != null) {
+        Text(connectionError, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(14.dp))
+      }
       // Top Live Infrastructure & Pairing Status Card (Collapsible)
       Surface(
         color = PureWhite,
@@ -195,12 +207,12 @@ fun WhatsAppBotScreen(
               )
               Spacer(modifier = Modifier.width(6.dp))
               Text(
-                text = "WhatsApp Gateway: ACTIVE",
+                text = if (connectionError != null) "WhatsApp: CHECK CONNECTION" else if (isBotConnected) "WhatsApp: CONNECTED" else "WhatsApp: DISCONNECTED",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 color = ForestGreenPrimary
               )
-              if (pairingCode.isNotBlank()) {
+              if (!isBotConnected && pairingCode.isNotBlank()) {
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                   text = "• $pairingCode",
@@ -233,10 +245,10 @@ fun WhatsAppBotScreen(
               Spacer(modifier = Modifier.height(6.dp))
 
               // Dynamic Pairing Code Summary Box
-              if (pairingCode.isNotBlank()) {
+              if (!isBotConnected && pairingCode.isNotBlank()) {
                 Surface(
                   shape = RoundedCornerShape(8.dp),
-                  color = Color(0xFFF8FAFC),
+                  color = NeutralSurfaceLight,
                   border = BorderStroke(1.dp, BorderGrey),
                   modifier = Modifier.fillMaxWidth()
                 ) {
@@ -296,11 +308,11 @@ fun WhatsAppBotScreen(
                         Icon(
                           imageVector = Icons.AutoMirrored.Filled.OpenInNew,
                           contentDescription = null,
-                          tint = WhatsAppGreen,
+                          tint = WhatsAppBrandGreen,
                           modifier = Modifier.size(12.dp)
                         )
                         Spacer(modifier = Modifier.width(3.dp))
-                        Text("Open WhatsApp", fontSize = 10.sp, color = WhatsAppGreen, fontWeight = FontWeight.Bold)
+                        Text("Open WhatsApp", fontSize = 12.sp, color = WhatsAppBrandGreen, fontWeight = FontWeight.Bold)
                       }
                     }
                   }
@@ -351,7 +363,7 @@ fun WhatsAppBotScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                   text = "SELECT MEMBER RECIPIENT",
-                  fontSize = 9.sp,
+                  fontSize = 11.sp,
                   fontWeight = FontWeight.Bold,
                   letterSpacing = 0.8.sp,
                   color = TextSecondary
@@ -366,7 +378,7 @@ fun WhatsAppBotScreen(
                     val isSelected = (selectedMember?.id == member.id)
                     Surface(
                       shape = RoundedCornerShape(20.dp),
-                      color = if (isSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                      color = if (isSelected) ForestGreenPrimary else NeutralSurfaceMedium,
                       border = BorderStroke(1.dp, if (isSelected) ForestGreenPrimary else BorderGrey),
                       modifier = Modifier.clickable { selectedMember = member }
                     ) {
@@ -415,7 +427,7 @@ fun WhatsAppBotScreen(
                 .background(PureWhite),
               contentAlignment = Alignment.Center
             ) {
-              Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, tint = WhatsAppGreen, modifier = Modifier.size(26.dp))
+              Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, tint = WhatsAppBrandGreen, modifier = Modifier.size(26.dp))
             }
             Spacer(modifier = Modifier.height(12.dp))
             Text(
@@ -469,7 +481,7 @@ fun WhatsAppBotScreen(
           ) {
             Text(
               text = "DIRECT WHATSAPP DISPATCH • ${selectedMember?.alias ?: "All Members"}",
-              fontSize = 9.sp,
+              fontSize = 11.sp,
               fontWeight = FontWeight.Bold,
               letterSpacing = 0.8.sp,
               color = TextSecondary
@@ -487,11 +499,11 @@ fun WhatsAppBotScreen(
                   Toast.makeText(context, "Opening chat with $targetPhone", Toast.LENGTH_SHORT).show()
                 }
               },
-              modifier = Modifier.height(26.dp)
+              modifier = Modifier.minimumInteractiveComponentSize()
             ) {
-              Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = WhatsAppGreen, modifier = Modifier.size(12.dp))
+              Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = WhatsAppBrandGreen, modifier = Modifier.size(12.dp))
               Spacer(modifier = Modifier.width(4.dp))
-              Text("Open Direct Chat", fontSize = 10.sp, color = WhatsAppGreen, fontWeight = FontWeight.Bold)
+              Text("Open Direct Chat", fontSize = 12.sp, color = WhatsAppBrandGreen, fontWeight = FontWeight.Bold)
             }
           }
 
@@ -510,7 +522,7 @@ fun WhatsAppBotScreen(
                 .weight(1f)
                 .testTag("whatsapp_chat_input"),
               colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = WhatsAppGreen,
+                focusedBorderColor = WhatsAppBrandGreen,
                 unfocusedBorderColor = BorderGrey
               ),
               shape = RoundedCornerShape(20.dp),
@@ -527,9 +539,9 @@ fun WhatsAppBotScreen(
                 }
               },
               modifier = Modifier
-                .size(44.dp)
+                .size(48.dp)
                 .clip(CircleShape)
-                .background(WhatsAppGreen)
+                .background(WhatsAppBrandGreen)
                 .testTag("whatsapp_send_btn")
             ) {
               Icon(
@@ -568,7 +580,7 @@ private fun OutboundTriggerChip(
       Spacer(modifier = Modifier.width(4.dp))
       Text(
         text = title,
-        fontSize = 11.sp,
+        fontSize = 12.sp,
         fontWeight = FontWeight.Bold,
         color = ForestGreenPrimary
       )
@@ -594,7 +606,7 @@ private fun ChatBubble(
         bottomEnd = if (isFromBot) 12.dp else 2.dp
       ),
       colors = CardDefaults.cardColors(
-        containerColor = if (isFromBot) PureWhite else Color(0xFFD9FDD3)
+        containerColor = if (isFromBot) PureWhite else WhatsAppBubbleGreen
       ),
       elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
       modifier = Modifier.fillMaxWidth(0.85f)
@@ -604,7 +616,7 @@ private fun ChatBubble(
           text = message.senderName,
           fontSize = 11.sp,
           fontWeight = FontWeight.Bold,
-          color = if (isFromBot) ForestGreenPrimary else Color(0xFF0F766E)
+          color = if (isFromBot) ForestGreenPrimary else TealDeep
         )
 
         Spacer(modifier = Modifier.height(2.dp))
@@ -631,7 +643,7 @@ private fun ChatBubble(
           Icon(
             imageVector = Icons.Default.DoneAll,
             contentDescription = null,
-            tint = Color(0xFF0284C7),
+            tint = SkyBlue,
             modifier = Modifier.size(14.dp)
           )
         }

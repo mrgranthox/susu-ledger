@@ -1,8 +1,13 @@
 package com.example.ui.screens
 
-import android.content.Context
-import android.content.Intent
-import android.widget.Toast
+import com.example.ui.theme.CreditBlue
+import com.example.ui.theme.NeutralBorderStrong
+import com.example.ui.theme.NeutralSurfaceLight
+import com.example.ui.theme.NeutralSurfaceMedium
+import com.example.ui.theme.NeutralTrack
+import com.example.ui.theme.SoftGreenFill
+
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -22,7 +27,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Button
@@ -59,6 +63,7 @@ import com.example.ui.theme.MoMoYellow
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.util.LedgerExport
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,7 +97,7 @@ fun ReportsSheet(
           modifier = Modifier
             .size(44.dp)
             .clip(CircleShape)
-            .background(Color(0xFFD4EBDD)),
+            .background(SoftGreenFill),
           contentAlignment = Alignment.Center
         ) {
           Icon(
@@ -161,7 +166,7 @@ fun ReportsSheet(
             title = "Active Members",
             value = "${stats.totalMembers}",
             subtext = "Zero member exits",
-            color = Color(0xFF1E40AF),
+            color = CreditBlue,
             modifier = Modifier.weight(1f)
           )
         }
@@ -184,7 +189,7 @@ fun ReportsSheet(
       Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+        colors = CardDefaults.cardColors(containerColor = NeutralSurfaceLight),
         border = androidx.compose.foundation.BorderStroke(1.dp, BorderGrey)
       ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -201,8 +206,8 @@ fun ReportsSheet(
       // Dual Officer Sign-Off Status
       Surface(
         shape = RoundedCornerShape(10.dp),
-        color = Color(0xFFF1F5F9),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1)),
+        color = NeutralSurfaceMedium,
+        border = androidx.compose.foundation.BorderStroke(1.dp, NeutralBorderStrong),
         modifier = Modifier.fillMaxWidth()
       ) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -234,7 +239,11 @@ fun ReportsSheet(
       // Export CSV Button
       Button(
         onClick = {
-          exportLedgerCsv(context, payments, cycleNumber)
+          LedgerExport.shareCycleCsv(
+            context = context,
+            payments = payments,
+            subjectLabel = "SusuLedger_Week${cycleNumber}_Export.csv"
+          )
         },
         modifier = Modifier
           .fillMaxWidth()
@@ -248,7 +257,7 @@ fun ReportsSheet(
       ) {
         Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
         Spacer(modifier = Modifier.width(8.dp))
-        Text("Export Cycle Ledger (CSV)", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        Text("Export Week Ledger (CSV)", fontSize = 15.sp, fontWeight = FontWeight.Bold)
       }
 
       Spacer(modifier = Modifier.height(10.dp))
@@ -321,27 +330,7 @@ private fun MethodBar(
         .height(8.dp)
         .clip(RoundedCornerShape(4.dp)),
       color = color,
-      trackColor = Color(0xFFE2E8F0)
+      trackColor = NeutralTrack
     )
-  }
-}
-
-private fun exportLedgerCsv(context: Context, payments: List<PaymentEntity>, cycleNumber: Int) {
-  val csvHeader = "ID,Cycle,Member,Amount,Method,Status,ConfirmedAt,PrevHash,CurrentHash,MoMoRef\n"
-  val csvRows = payments.joinToString("\n") { p ->
-    "${p.id},${p.cycleId},\"${p.memberName}\",${p.amountPaid},${p.method},${p.status},${p.confirmedAt},${p.prevHash},${p.currentHash},${p.momoReference ?: ""}"
-  }
-  val csvContent = csvHeader + csvRows
-
-  val sendIntent = Intent().apply {
-    action = Intent.ACTION_SEND
-    putExtra(Intent.EXTRA_TEXT, csvContent)
-    putExtra(Intent.EXTRA_SUBJECT, "SusuLedger_Week${cycleNumber}_Export.csv")
-    type = "text/plain"
-  }
-  try {
-    context.startActivity(Intent.createChooser(sendIntent, "Share SusuLedger CSV Export"))
-  } catch (e: Exception) {
-    Toast.makeText(context, "CSV prepared with ${payments.size} records!", Toast.LENGTH_SHORT).show()
   }
 }

@@ -1,5 +1,13 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.DangerRedBg
+import com.example.ui.theme.NeutralSurfaceLight
+import com.example.ui.theme.NeutralSurfaceMedium
+import com.example.ui.theme.NeutralTrack
+import com.example.ui.theme.WarningAmber
+import com.example.ui.theme.WarningAmberBg
+
+
 import android.Manifest
 import android.app.Activity
 import android.content.Context
@@ -7,6 +15,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.ContactsContract
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -118,10 +127,10 @@ data class ContactItem(val name: String, val phone: String)
 @Composable
 fun OnboardingFlowScreen(
   pairingCode: String = "",
-  onCompleteOnboarding: (groupName: String, amount: Double, treasurerPhone: String, treasurerName: String, members: List<SetupMemberItem>, treasurerPin: String) -> Unit,
+  onCompleteOnboarding: (groupName: String, amount: Double, treasurerPhone: String, treasurerName: String, members: List<SetupMemberItem>, treasurerPin: String, schedule: String) -> Unit,
   onSwitchToLogin: () -> Unit
 ) {
-  var currentStep by remember { mutableStateOf(1) } // 1..7
+  var currentStep by remember { mutableStateOf(1) } // 1..6
 
   // State across steps
   var treasurerPhone by remember { mutableStateOf("") }
@@ -154,14 +163,13 @@ fun OnboardingFlowScreen(
         verticalAlignment = Alignment.CenterVertically
       ) {
         Text(
-          text = "Step $currentStep of 7",
+          text = "Step $currentStep of 6",
           style = MaterialTheme.typography.labelSmall.copy(color = TextSecondary, fontWeight = FontWeight.SemiBold)
         )
         TextButton(
           onClick = {
             if (currentStep > 1) currentStep--
-          },
-          modifier = Modifier.height(32.dp)
+          }
         ) {
           Text("Back", color = TextSecondary, fontSize = 13.sp)
         }
@@ -219,17 +227,11 @@ fun OnboardingFlowScreen(
         6 -> Step6SecurityPin(
           treasurerPin = treasurerPin,
           onTreasurerPinChange = { treasurerPin = it },
-          onContinue = { currentStep = 7 }
-        )
-        7 -> Step7ConnectBot(
-          pairingCode = pairingCode,
-          treasurerName = if (treasurerName.isNotBlank()) treasurerName else "Treasurer",
-          groupName = if (groupName.isNotBlank()) groupName else "Susu Group",
-          onFinish = {
+          onContinue = {
             val amtNum = contributionAmount.replace("GHS", "").trim().toDoubleOrNull() ?: 50.0
             val resolvedTreasurerName = if (treasurerName.isNotBlank()) treasurerName.trim() else "Ama Mensah"
             val resolvedGroupName = if (groupName.isNotBlank()) groupName.trim() else "Nima Market Susu"
-            onCompleteOnboarding(resolvedGroupName, amtNum, treasurerPhone, resolvedTreasurerName, memberList, treasurerPin)
+            onCompleteOnboarding(resolvedGroupName, amtNum, treasurerPhone, resolvedTreasurerName, memberList, treasurerPin, collectionFrequency)
           }
         )
       }
@@ -463,8 +465,8 @@ private fun Step2PhoneOtp(
             modifier = Modifier
               .size(30.dp, 20.dp)
               .clip(RoundedCornerShape(3.dp))
-              .background(Color(0xFFFEF3C7))
-              .border(1.dp, Color(0xFFD97706), RoundedCornerShape(3.dp)),
+              .background(WarningAmberBg)
+              .border(1.dp, WarningAmber, RoundedCornerShape(3.dp)),
             contentAlignment = Alignment.Center
           ) {
             Text("GH", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextSecondary)
@@ -643,7 +645,7 @@ private fun Step2PhoneOtp(
         Spacer(modifier = Modifier.height(10.dp))
         Surface(
           shape = RoundedCornerShape(8.dp),
-          color = Color(0xFFFEF2F2),
+          color = DangerRedBg,
           border = BorderStroke(1.dp, ErrorRed.copy(alpha = 0.4f)),
           modifier = Modifier.fillMaxWidth()
         ) {
@@ -724,7 +726,7 @@ private fun Step2PhoneOtp(
         shape = RoundedCornerShape(8.dp),
         colors = ButtonDefaults.buttonColors(
           containerColor = ForestGreenPrimary,
-          disabledContainerColor = Color(0xFFE2E8F0)
+          disabledContainerColor = NeutralTrack
         )
       ) {
         if (isSendingSms || isVerifyingCode) {
@@ -823,7 +825,7 @@ private fun Step3CreateGroup(
               .weight(1f)
               .clickable { onAmountChange(preset) },
             shape = RoundedCornerShape(6.dp),
-            color = if (isSelected) ForestGreenLightFill else Color(0xFFF8FAFC),
+            color = if (isSelected) ForestGreenLightFill else NeutralSurfaceLight,
             border = BorderStroke(1.dp, if (isSelected) ForestGreenPrimary else BorderGrey)
           ) {
             Box(modifier = Modifier.padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
@@ -890,7 +892,7 @@ private fun Step3CreateGroup(
         shape = RoundedCornerShape(8.dp),
         colors = ButtonDefaults.buttonColors(
           containerColor = ForestGreenPrimary,
-          disabledContainerColor = Color(0xFFE2E8F0)
+          disabledContainerColor = NeutralTrack
         )
       ) {
         Text("Continue to Add Members", style = MaterialTheme.typography.labelLarge.copy(color = PureWhite))
@@ -937,9 +939,12 @@ private fun Step4AddMembers(
         val cleanPhone = if (pickedPhone.isNotBlank()) {
           GhanaPhoneUtils.formatFullInternational(GhanaPhoneUtils.sanitizeTo9Digits(pickedPhone))
         } else {
-          "+233 24 100 00${members.size + 1}"
+          Toast.makeText(context, "No phone number found for this contact.", Toast.LENGTH_SHORT).show()
+          ""
         }
-        onAddMember(pickedName, cleanPhone)
+        if (cleanPhone.isNotBlank()) {
+          onAddMember(pickedName, cleanPhone)
+        }
       }
     }
   }
@@ -1020,7 +1025,7 @@ private fun Step4AddMembers(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         border = BorderStroke(1.dp, BorderGrey),
-        color = Color(0xFFF8FAFC)
+        color = NeutralSurfaceLight
       ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
           Text("Or enter manually:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
@@ -1065,18 +1070,14 @@ private fun Step4AddMembers(
 
             Button(
               onClick = {
-                if (newName.isNotBlank()) {
-                  val formattedNumber = if (sanitizedPhone.isNotBlank()) {
-                    GhanaPhoneUtils.formatFullInternational(sanitizedPhone)
-                  } else {
-                    "+233 24 100 00${members.size + 1}"
-                  }
+                if (newName.isNotBlank() && GhanaPhoneUtils.isValidGhanaPhone(sanitizedPhone)) {
+                  val formattedNumber = GhanaPhoneUtils.formatFullInternational(sanitizedPhone)
                   onAddMember(newName.trim(), formattedNumber)
                   newName = ""
                   newPhone = ""
                 }
               },
-              enabled = newName.isNotBlank(),
+              enabled = newName.isNotBlank() && GhanaPhoneUtils.isValidGhanaPhone(sanitizedPhone),
               shape = RoundedCornerShape(6.dp),
               colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
               modifier = Modifier.height(50.dp).testTag("add_member_submit_btn")
@@ -1130,8 +1131,7 @@ private fun Step4AddMembers(
                 }
               }
               IconButton(
-                onClick = { onRemoveMember(member) },
-                modifier = Modifier.size(28.dp)
+                onClick = { onRemoveMember(member) }
               ) {
                 Icon(Icons.Default.Close, contentDescription = "Remove", tint = LineIconBlack, modifier = Modifier.size(16.dp))
               }
@@ -1163,7 +1163,7 @@ private fun Step4AddMembers(
         shape = RoundedCornerShape(8.dp),
         colors = ButtonDefaults.buttonColors(
           containerColor = ForestGreenPrimary,
-          disabledContainerColor = Color(0xFFE2E8F0)
+          disabledContainerColor = NeutralTrack
         )
       ) {
         Text(
@@ -1431,7 +1431,7 @@ private fun ContactsPickerBottomSheet(
                 }
 
                 Surface(
-                  color = if (isSelected) ForestGreenPrimary else Color(0xFFF1F5F9),
+                  color = if (isSelected) ForestGreenPrimary else NeutralSurfaceMedium,
                   shape = RoundedCornerShape(4.dp),
                   modifier = Modifier.clickable {
                     if (isSelected) selectedContacts.remove(contact)
@@ -1465,7 +1465,7 @@ private fun ContactsPickerBottomSheet(
           shape = RoundedCornerShape(8.dp),
           colors = ButtonDefaults.buttonColors(
             containerColor = ForestGreenPrimary,
-            disabledContainerColor = Color(0xFFE2E8F0)
+            disabledContainerColor = NeutralTrack
           )
         ) {
           Text("Import ${selectedContacts.size} Selected Member${if (selectedContacts.size != 1) "s" else ""}", color = PureWhite, fontWeight = FontWeight.Bold)
@@ -1511,7 +1511,7 @@ private fun queryContactDetails(context: Context, uri: Uri): Pair<String, String
     }
   } catch (_: Exception) {
     name = "Imported Contact"
-    phone = "+233 24 100 0001"
+    phone = ""
   }
   return Pair(name, phone)
 }
@@ -1803,7 +1803,7 @@ private fun Step6SecurityPin(
         }
       } else if (pinsMismatch) {
         Surface(
-          color = Color(0xFFFEF2F2),
+          color = DangerRedBg,
           shape = RoundedCornerShape(8.dp),
           border = BorderStroke(1.dp, ErrorRed.copy(alpha = 0.4f)),
           modifier = Modifier.fillMaxWidth()
@@ -1846,7 +1846,7 @@ private fun Step6SecurityPin(
         shape = RoundedCornerShape(8.dp),
         colors = ButtonDefaults.buttonColors(
           containerColor = ForestGreenPrimary,
-          disabledContainerColor = Color(0xFFE2E8F0)
+          disabledContainerColor = NeutralTrack
         )
       ) {
         Text("Save PIN & Continue", fontSize = 15.sp, color = PureWhite, fontWeight = FontWeight.Bold)
@@ -1866,7 +1866,6 @@ private fun Step7ConnectBot(
   onFinish: () -> Unit
 ) {
   val context = LocalContext.current
-  var isConnected by remember { mutableStateOf(false) }
 
   Column(
     modifier = Modifier
@@ -1935,7 +1934,7 @@ private fun Step7ConnectBot(
           Spacer(modifier = Modifier.height(12.dp))
 
           Surface(
-            color = Color(0xFFF8FAFC),
+            color = NeutralSurfaceLight,
             shape = RoundedCornerShape(6.dp),
             border = BorderStroke(1.dp, BorderGrey)
           ) {
@@ -1979,7 +1978,6 @@ private fun Step7ConnectBot(
       // Open WhatsApp & Send Code Button (Launches WhatsApp Intent)
       Button(
         onClick = {
-          isConnected = true
           try {
             val url = "https://wa.me/233240007878?text=PAIR:$pairingCode"
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
@@ -2005,17 +2003,11 @@ private fun Step7ConnectBot(
 
       Spacer(modifier = Modifier.height(16.dp))
 
-      // Status indicator
+      // Status indicator — the app waits for real bot confirmation before claiming success
       Row(verticalAlignment = Alignment.CenterVertically) {
-        if (!isConnected) {
-          CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = ForestGreenPrimary)
-          Spacer(modifier = Modifier.width(8.dp))
-          Text("Listening for incoming WhatsApp pairing...", style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary))
-        } else {
-          Icon(Icons.Default.CheckCircle, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp))
-          Spacer(modifier = Modifier.width(6.dp))
-          Text("Group Connected & Members Welcomed!", style = MaterialTheme.typography.bodyMedium.copy(color = ForestGreenPrimary, fontWeight = FontWeight.Bold))
-        }
+        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = ForestGreenPrimary)
+        Spacer(modifier = Modifier.width(8.dp))
+        Text("Waiting for the bot to confirm pairing in WhatsApp...", style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary))
       }
     }
 

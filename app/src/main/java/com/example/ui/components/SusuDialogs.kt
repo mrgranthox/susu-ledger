@@ -1,5 +1,8 @@
 package com.example.ui.components
 
+import com.example.ui.theme.DangerRed
+
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -61,7 +64,7 @@ fun NewWeekDialog(
     },
     title = {
       Text(
-        text = "Advance to Week ${currentWeekNumber + 1}?",
+        text = "Start Week ${currentWeekNumber + 1}?",
         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
       )
     },
@@ -190,7 +193,7 @@ fun AddMemberDialog(
         Text(
           text = statusMsg,
           fontSize = 11.sp,
-          color = if (isValidPhone) SuccessGreen else if (isError) Color(0xFFDC2626) else TextSecondary
+          color = if (isValidPhone) SuccessGreen else if (isError) DangerRed else TextSecondary
         )
       }
     },

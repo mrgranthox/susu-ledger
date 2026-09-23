@@ -1,5 +1,18 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.ErrorBgLight
+import com.example.ui.theme.ErrorRed
+import com.example.ui.theme.NeutralSurfaceMuted
+import com.example.ui.theme.NeutralTrack
+import com.example.ui.theme.OffWhiteSurface
+import com.example.ui.theme.SoftGreenTint
+import com.example.ui.theme.WarningAmber
+import com.example.ui.theme.WarningAmberBg
+import com.example.ui.theme.WarningAmberBorder
+import com.example.ui.theme.WarningAmberText
+import com.example.ui.theme.WarningTextDeep
+
+
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -24,7 +37,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.AccountBalanceWallet
@@ -38,7 +50,6 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.Receipt
@@ -54,13 +65,12 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -121,7 +131,6 @@ fun DashboardScreen(
   isBotConnected: Boolean = false,
   onSyncClick: () -> Unit = {},
   onSelectGroup: (String) -> Unit,
-  onOpenPairing: () -> Unit,
   onConfirmClaim: (ClaimEntity) -> Unit,
   onRejectClaim: (ClaimEntity) -> Unit,
   onNewWeekClick: () -> Unit,
@@ -239,6 +248,9 @@ fun DashboardScreen(
 
           // Actions: Lock App, WhatsApp Bot, Pairing Notifications, and Quick Menu
           Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onSyncClick, modifier = Modifier.testTag("dashboard_refresh_btn")) {
+              Icon(Icons.Default.Refresh, contentDescription = "Refresh ledger", tint = ForestGreenPrimary)
+            }
             IconButton(
               onClick = onLockApp,
               modifier = Modifier.testTag("dashboard_lock_app_btn")
@@ -263,18 +275,6 @@ fun DashboardScreen(
               )
             }
 
-            IconButton(
-              onClick = onOpenPairing,
-              modifier = Modifier.testTag("notification_bell_btn")
-            ) {
-              Icon(
-                imageVector = Icons.Default.Notifications,
-                contentDescription = "Notifications & Pairing",
-                tint = LineIconBlack,
-                modifier = Modifier.size(20.dp)
-              )
-            }
-
             Box {
               IconButton(
                 onClick = { topMenuOpen = true },
@@ -294,14 +294,6 @@ fun DashboardScreen(
                 modifier = Modifier.background(PureWhite)
               ) {
                 DropdownMenuItem(
-                  leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp)) },
-                  text = { Text("Lock App (PIN / Face)", color = TextPrimary) },
-                  onClick = {
-                    topMenuOpen = false
-                    onLockApp()
-                  }
-                )
-                DropdownMenuItem(
                   leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp)) },
                   text = { Text("Sync Cloud Ledger", color = TextPrimary) },
                   onClick = {
@@ -310,8 +302,8 @@ fun DashboardScreen(
                   }
                 )
                 DropdownMenuItem(
-                  leadingIcon = { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = Color(0xFFD32F2F), modifier = Modifier.size(18.dp)) },
-                  text = { Text("Sign Out", color = Color(0xFFD32F2F), fontWeight = FontWeight.Bold) },
+                  leadingIcon = { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = ErrorRed, modifier = Modifier.size(18.dp)) },
+                  text = { Text("Sign Out", color = ErrorRed, fontWeight = FontWeight.Bold) },
                   onClick = {
                     topMenuOpen = false
                     onSignOut()
@@ -354,122 +346,6 @@ fun DashboardScreen(
       verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
       // -----------------------------------------------------------------------
-      // WHATSAPP BOT PAIRING BANNER (Visible when bot is not connected)
-      // -----------------------------------------------------------------------
-      if (!isBotConnected && botPairingCode.isNotBlank()) {
-        Card(
-          modifier = Modifier
-            .fillMaxWidth()
-            .testTag("dashboard_bot_banner"),
-          colors = CardDefaults.cardColors(containerColor = ForestGreenLightFill),
-          border = BorderStroke(1.dp, ForestGreenPrimary.copy(alpha = 0.4f)),
-          shape = RoundedCornerShape(8.dp)
-        ) {
-          Row(
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            Column(modifier = Modifier.weight(1f)) {
-              Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("WhatsApp Bot Pending Connection", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = ForestGreenPrimary)
-              }
-              Spacer(modifier = Modifier.height(2.dp))
-              Text("Pairing Code: $botPairingCode", fontSize = 11.sp, color = TextPrimary)
-            }
-
-            Button(
-              onClick = onOpenWhatsAppSimulator,
-              colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
-              shape = RoundedCornerShape(6.dp),
-              contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-              Text("Connect Bot", fontSize = 11.sp, color = PureWhite, fontWeight = FontWeight.Bold)
-            }
-          }
-        }
-      }
-
-      // -----------------------------------------------------------------------
-      // PENDING OFFLINE BACKUP BANNER (Visible ONLY when offline data needs cloud backup)
-      // -----------------------------------------------------------------------
-      if (unsyncedCount > 0 || isSyncing) {
-        Surface(
-          modifier = Modifier
-            .fillMaxWidth()
-            .testTag("offline_cloud_sync_banner"),
-          color = if (isSyncing) ForestGreenLightFill else Color(0xFFFEF3C7),
-          shape = RoundedCornerShape(8.dp),
-          border = BorderStroke(1.dp, if (isSyncing) ForestGreenPrimary.copy(alpha = 0.3f) else Color(0xFFF59E0B))
-        ) {
-          Row(
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            Row(
-              modifier = Modifier.weight(1f),
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Box(
-                modifier = Modifier
-                  .size(8.dp)
-                  .background(if (isSyncing) ForestGreenPrimary else Color(0xFFD97706), CircleShape)
-              )
-              Spacer(modifier = Modifier.width(10.dp))
-              Column {
-                Text(
-                  text = if (isSyncing) "Backing up to Database..." else "Offline Data Pending Backup ($unsyncedCount)",
-                  style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = if (isSyncing) ForestGreenPrimary else Color(0xFF92400E)
-                  )
-                )
-                Text(
-                  text = if (isSyncing) "Syncing offline records with database..." else "$unsyncedCount payment(s) saved locally. Tap to backup to database.",
-                  style = MaterialTheme.typography.bodySmall.copy(
-                    fontSize = 10.sp,
-                    color = if (isSyncing) TextSecondary else Color(0xFF78350F)
-                  )
-                )
-              }
-            }
-
-            Button(
-              onClick = onSyncClick,
-              modifier = Modifier.height(30.dp),
-              contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-              shape = RoundedCornerShape(6.dp),
-              colors = ButtonDefaults.buttonColors(
-                containerColor = if (isSyncing) ForestGreenPrimary else Color(0xFFD97706)
-              )
-            ) {
-              Icon(
-                imageVector = if (isSyncing) Icons.Default.Refresh else Icons.Default.CloudUpload,
-                contentDescription = "Backup",
-                tint = PureWhite,
-                modifier = Modifier.size(13.dp)
-              )
-              Spacer(modifier = Modifier.width(4.dp))
-              Text(
-                text = if (isSyncing) "SYNCING..." else "BACKUP NOW",
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontSize = 10.sp,
-                  fontWeight = FontWeight.Bold,
-                  color = PureWhite
-                )
-              )
-            }
-          }
-        }
-      }
-
       // -----------------------------------------------------------------------
       // TOTAL SAVINGS BALANCE CARD (PROMINENT METRIC)
       // Displays total savings balance from double-entry ledger with breakdown
@@ -629,7 +505,7 @@ fun DashboardScreen(
           .testTag("amber_hero_card"),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = PureWhite),
-        border = BorderStroke(1.5.dp, Color(0xFFD97706).copy(alpha = 0.5f))
+        border = BorderStroke(1.5.dp, WarningAmber.copy(alpha = 0.5f))
       ) {
         Column(
           modifier = Modifier
@@ -644,14 +520,14 @@ fun DashboardScreen(
           ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
               Surface(
-                color = Color(0xFFFEF3C7),
+                color = WarningAmberBg,
                 shape = RoundedCornerShape(6.dp)
               ) {
                 Text(
                   text = "ACTIVE CYCLE",
                   style = MaterialTheme.typography.labelSmall.copy(
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF92400E),
+                    color = WarningAmberText,
                     fontSize = 10.sp
                   ),
                   modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -679,13 +555,13 @@ fun DashboardScreen(
                 Box(
                   modifier = Modifier
                     .size(6.dp)
-                    .background(Color(0xFFD97706), CircleShape)
+                    .background(WarningAmber, CircleShape)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                   text = "Due ${activeCycle?.dueDate ?: "Friday, 5 PM"}",
                   style = MaterialTheme.typography.labelSmall.copy(
-                    color = Color(0xFF92400E),
+                    color = WarningAmberText,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 11.sp
                   )
@@ -740,7 +616,7 @@ fun DashboardScreen(
               Text("Completion", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, color = TextSecondary))
               Text(
                 text = "${stats.progressPercent.toInt()}%",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = Color(0xFFD97706))
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = WarningAmber)
               )
             }
           }
@@ -759,7 +635,7 @@ fun DashboardScreen(
               )
               Text(
                 text = "${stats.totalMembers - stats.paidMembersCount} pending",
-                style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFFD97706), fontWeight = FontWeight.Medium, fontSize = 12.sp)
+                style = MaterialTheme.typography.bodySmall.copy(color = WarningAmber, fontWeight = FontWeight.Medium, fontSize = 12.sp)
               )
             }
 
@@ -772,7 +648,7 @@ fun DashboardScreen(
                 .height(8.dp)
                 .clip(RoundedCornerShape(4.dp)),
               color = ForestGreenPrimary,
-              trackColor = Color(0xFFE2E8F0)
+              trackColor = NeutralTrack
             )
           }
 
@@ -780,18 +656,139 @@ fun DashboardScreen(
 
           // Footer link
           Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+              .fillMaxWidth()
+              .minimumInteractiveComponentSize()
+              .clickable(onClick = onOpenCycleDetail)
+              .testTag("view_week_roster_link"),
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically
           ) {
             Text(
-              text = "View Cycle Roster & Actions →",
+              text = "View Week Roster & Actions →",
               style = MaterialTheme.typography.labelSmall.copy(
                 color = ForestGreenPrimary,
                 fontWeight = FontWeight.Bold,
-                fontSize = 11.sp
+                fontSize = 12.sp
               )
             )
+          }
+        }
+      }
+
+      // WHATSAPP BOT PAIRING BANNER (Visible when bot is not connected)
+      // -----------------------------------------------------------------------
+      if (!isBotConnected && botPairingCode.isNotBlank()) {
+        Card(
+          modifier = Modifier
+            .fillMaxWidth()
+            .testTag("dashboard_bot_banner"),
+          colors = CardDefaults.cardColors(containerColor = ForestGreenLightFill),
+          border = BorderStroke(1.dp, ForestGreenPrimary.copy(alpha = 0.4f)),
+          shape = RoundedCornerShape(8.dp)
+        ) {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Column(modifier = Modifier.weight(1f)) {
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("WhatsApp Bot Pending Connection", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = ForestGreenPrimary)
+              }
+              Spacer(modifier = Modifier.height(2.dp))
+              Text("Pairing Code: $botPairingCode", fontSize = 12.sp, color = TextPrimary)
+            }
+
+            Button(
+              onClick = onOpenWhatsAppSimulator,
+              modifier = Modifier.minimumInteractiveComponentSize(),
+              colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+              shape = RoundedCornerShape(6.dp),
+              contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+              Text("Connect Bot", fontSize = 12.sp, color = PureWhite, fontWeight = FontWeight.Bold)
+            }
+          }
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // PENDING OFFLINE BACKUP BANNER (Visible ONLY when offline data needs cloud backup)
+      // -----------------------------------------------------------------------
+      if (unsyncedCount > 0 || isSyncing) {
+        Surface(
+          modifier = Modifier
+            .fillMaxWidth()
+            .testTag("offline_cloud_sync_banner"),
+          color = if (isSyncing) ForestGreenLightFill else WarningAmberBg,
+          shape = RoundedCornerShape(8.dp),
+          border = BorderStroke(1.dp, if (isSyncing) ForestGreenPrimary.copy(alpha = 0.3f) else WarningAmberBorder)
+        ) {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Row(
+              modifier = Modifier.weight(1f),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Box(
+                modifier = Modifier
+                  .size(8.dp)
+                  .background(if (isSyncing) ForestGreenPrimary else WarningAmber, CircleShape)
+              )
+              Spacer(modifier = Modifier.width(10.dp))
+              Column {
+                Text(
+                  text = if (isSyncing) "Backing up to Database..." else "Offline Data Pending Backup ($unsyncedCount)",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = if (isSyncing) ForestGreenPrimary else WarningAmberText
+                  )
+                )
+                Text(
+                  text = if (isSyncing) "Syncing offline records with database..." else "$unsyncedCount payment(s) saved locally. Tap to backup to database.",
+                  style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 10.sp,
+                    color = if (isSyncing) TextSecondary else WarningTextDeep
+                  )
+                )
+              }
+            }
+
+            Button(
+              onClick = onSyncClick,
+              modifier = Modifier.minimumInteractiveComponentSize(),
+              contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+              shape = RoundedCornerShape(6.dp),
+              colors = ButtonDefaults.buttonColors(
+                containerColor = if (isSyncing) ForestGreenPrimary else WarningAmber
+              )
+            ) {
+              Icon(
+                imageVector = if (isSyncing) Icons.Default.Refresh else Icons.Default.CloudUpload,
+                contentDescription = "Backup",
+                tint = PureWhite,
+                modifier = Modifier.size(13.dp)
+              )
+              Spacer(modifier = Modifier.width(4.dp))
+              Text(
+                text = if (isSyncing) "SYNCING..." else "BACKUP NOW",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 10.sp,
+                  fontWeight = FontWeight.Bold,
+                  color = PureWhite
+                )
+              )
+            }
           }
         }
       }
@@ -894,8 +891,7 @@ fun DashboardScreen(
           )
 
           TextButton(
-            onClick = onDirectPaymentClick,
-            modifier = Modifier.height(32.dp)
+            onClick = onDirectPaymentClick
           ) {
             Text(
               text = "+ Direct Payment",
@@ -1030,7 +1026,7 @@ fun DashboardScreen(
             )
             Spacer(modifier = Modifier.width(6.dp))
             Surface(
-              color = Color(0xFFF0F4F2),
+              color = SoftGreenTint,
               shape = RoundedCornerShape(10.dp)
             ) {
               Text(
@@ -1046,8 +1042,7 @@ fun DashboardScreen(
           }
 
           TextButton(
-            onClick = onOpenLedger,
-            modifier = Modifier.height(32.dp)
+            onClick = onOpenLedger
           ) {
             Text(
               text = "View Ledger →",
@@ -1060,36 +1055,6 @@ fun DashboardScreen(
         }
 
         Spacer(modifier = Modifier.height(8.dp))
-
-        // Transaction Channel Filter Chips
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-          listOf("ALL", "MOMO", "CASH", "AGENT").forEach { filter ->
-            val selected = transactionFilter == filter
-            Surface(
-              modifier = Modifier
-                .clip(RoundedCornerShape(16.dp))
-                .clickable { transactionFilter = filter }
-                .testTag("filter_chip_$filter"),
-              color = if (selected) ForestGreenPrimary else PureWhite,
-              border = BorderStroke(1.dp, if (selected) ForestGreenPrimary else BorderGrey),
-              shape = RoundedCornerShape(16.dp)
-            ) {
-              Text(
-                text = if (filter == "ALL") "All (${recentPayments.size})" else filter,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                style = MaterialTheme.typography.labelSmall.copy(
-                  fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                  color = if (selected) PureWhite else TextSecondary
-                )
-              )
-            }
-          }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
 
         if (filteredTransactions.isEmpty()) {
           Card(
@@ -1219,7 +1184,7 @@ fun DashboardScreen(
         ) {
           Text("Transaction Receipt", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
           Surface(
-            color = if (payment.status == "confirmed") ForestGreenLightFill else Color(0xFFFFEBEE),
+            color = if (payment.status == "confirmed") ForestGreenLightFill else ErrorBgLight,
             shape = RoundedCornerShape(6.dp)
           ) {
             Text(
@@ -1227,7 +1192,7 @@ fun DashboardScreen(
               modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
               style = MaterialTheme.typography.labelSmall.copy(
                 fontWeight = FontWeight.Bold,
-                color = if (payment.status == "confirmed") ForestGreenPrimary else Color(0xFFD32F2F)
+                color = if (payment.status == "confirmed") ForestGreenPrimary else ErrorRed
               )
             )
           }
@@ -1242,7 +1207,7 @@ fun DashboardScreen(
         ) {
           // Amount & Member Name Box
           Surface(
-            color = Color(0xFFF9FBF9),
+            color = OffWhiteSurface,
             shape = RoundedCornerShape(8.dp),
             border = BorderStroke(1.dp, BorderGrey),
             modifier = Modifier.fillMaxWidth()
@@ -1281,7 +1246,7 @@ fun DashboardScreen(
 
           // Cryptographic Hash Section
           Surface(
-            color = Color(0xFFF3F4F6),
+            color = NeutralSurfaceMuted,
             shape = RoundedCornerShape(8.dp),
             modifier = Modifier.fillMaxWidth()
           ) {
@@ -1490,7 +1455,7 @@ private fun DashboardTransactionItemRow(
       Text(
         text = "+ GHS ${String.format(Locale.US, "%.2f", payment.amountPaid)}",
         style = MaterialTheme.typography.titleSmall.copy(
-          color = if (payment.status == "confirmed") ForestGreenPrimary else Color(0xFFD32F2F),
+          color = if (payment.status == "confirmed") ForestGreenPrimary else ErrorRed,
           fontWeight = FontWeight.Bold
         )
       )
@@ -1565,7 +1530,7 @@ private fun AttentionClaimRow(
         shape = RoundedCornerShape(6.dp),
         colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
         modifier = Modifier
-          .height(32.dp)
+          .minimumInteractiveComponentSize()
           .testTag("confirm_claim_${claim.id}")
       ) {
         Text("Confirm", fontSize = 12.sp, color = PureWhite, fontWeight = FontWeight.SemiBold)
@@ -1577,7 +1542,7 @@ private fun AttentionClaimRow(
         border = BorderStroke(1.dp, BorderGrey),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = LineIconGrey),
         modifier = Modifier
-          .height(32.dp)
+          .minimumInteractiveComponentSize()
           .testTag("reject_claim_${claim.id}")
       ) {
         Text("Reject", fontSize = 12.sp, color = LineIconGrey, fontWeight = FontWeight.SemiBold)

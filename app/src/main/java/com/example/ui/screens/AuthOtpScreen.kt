@@ -1,5 +1,11 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.DangerRedBg
+import com.example.ui.theme.NeutralSurfaceLight
+import com.example.ui.theme.NeutralTrack
+import com.example.ui.theme.SoftGreenFill
+
+
 import android.app.Activity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
@@ -78,7 +84,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun AuthOtpScreen(
   onAuthenticate: (phone: String, pin: String, role: String, onResult: (Boolean, String?) -> Unit) -> Unit,
-  onNavigateToRegister: () -> Unit
+  onNavigateToRegister: () -> Unit,
+  onBiometricAuthenticated: ((Boolean, String?) -> Unit) -> Unit = { it(false, "Sign in with your phone and PIN first.") }
 ) {
   val context = LocalContext.current
   val activity = context as? Activity
@@ -199,7 +206,7 @@ fun AuthOtpScreen(
       Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+        colors = CardDefaults.cardColors(containerColor = NeutralSurfaceLight),
         border = BorderStroke(1.dp, BorderGrey)
       ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -220,7 +227,7 @@ fun AuthOtpScreen(
             // Country Code Pill
             Surface(
               shape = RoundedCornerShape(8.dp),
-              color = Color(0xFFE2E8F0),
+              color = NeutralTrack,
               modifier = Modifier.padding(end = 8.dp)
             ) {
               Row(
@@ -261,7 +268,7 @@ fun AuthOtpScreen(
       Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+        colors = CardDefaults.cardColors(containerColor = NeutralSurfaceLight),
         border = BorderStroke(1.dp, BorderGrey)
       ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -359,7 +366,7 @@ fun AuthOtpScreen(
         Spacer(modifier = Modifier.height(12.dp))
         Surface(
           shape = RoundedCornerShape(8.dp),
-          color = Color(0xFFFEF2F2),
+          color = DangerRedBg,
           border = BorderStroke(1.dp, ErrorRed.copy(alpha = 0.4f)),
           modifier = Modifier.fillMaxWidth()
         ) {
@@ -440,9 +447,9 @@ fun AuthOtpScreen(
             )
             when (result) {
               is BiometricAuthResult.Success -> {
-                val fullPhone = if (phoneNumber.startsWith("+")) phoneNumber else "+233 $phoneNumber"
-                val resolvedPin = if (pinValue.isNotBlank()) pinValue else "1234"
-                onAuthenticate(fullPhone, resolvedPin, selectedRole) { _, _ -> }
+                onBiometricAuthenticated { success, error ->
+                  if (!success) errorMessage = error ?: "Unable to unlock this officer account."
+                }
               }
               is BiometricAuthResult.FallbackToPin -> {
                 errorMessage = "Biometrics unavailable: ${result.reason}. Use PIN above."
@@ -623,7 +630,7 @@ private fun RoleCard(
   Box(
     modifier = modifier
       .clip(RoundedCornerShape(10.dp))
-      .background(if (isSelected) Color(0xFFD4EBDD) else Color(0xFFF8FAFC))
+      .background(if (isSelected) SoftGreenFill else NeutralSurfaceLight)
       .border(
         width = if (isSelected) 2.dp else 1.dp,
         color = if (isSelected) ForestGreenPrimary else BorderGrey,

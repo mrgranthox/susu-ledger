@@ -2,7 +2,6 @@ package com.example.ui.screens
 
 import android.content.Context
 import android.content.Intent
-import android.widget.Toast
 import com.example.ui.components.StandardNavTopBar
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -23,10 +22,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
@@ -34,8 +31,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -71,6 +66,7 @@ import com.example.ui.theme.LineIconGrey
 import com.example.ui.theme.PureWhite
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import com.example.util.LedgerExport
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -93,8 +89,6 @@ fun HistoryScreen(
   onBackClick: (() -> Unit)? = null
 ) {
   val context = LocalContext.current
-  var selectedYear by remember { mutableStateOf("2026") }
-  var yearDropdownOpen by remember { mutableStateOf(false) }
   var searchQuery by remember { mutableStateOf("") }
   var showAllCyclesModal by remember { mutableStateOf(false) }
   var selectedPastCycleForDetail by remember { mutableStateOf<PastCycleItem?>(null) }
@@ -149,40 +143,9 @@ fun HistoryScreen(
   ) {
     // Top Bar
     StandardNavTopBar(
-      title = "Past Cycles",
+      title = "Past Weeks",
       subtitle = "$groupName collection archives",
-      onBackClick = onBackClick,
-      actions = {
-        // Year dropdown
-        Box {
-          Row(
-            modifier = Modifier
-              .border(1.dp, BorderGrey, RoundedCornerShape(6.dp))
-              .clickable { yearDropdownOpen = true }
-              .padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            Text(selectedYear, style = MaterialTheme.typography.labelMedium.copy(color = TextPrimary, fontWeight = FontWeight.SemiBold))
-            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = LineIconBlack, modifier = Modifier.size(18.dp))
-          }
-
-          DropdownMenu(
-            expanded = yearDropdownOpen,
-            onDismissRequest = { yearDropdownOpen = false },
-            modifier = Modifier.background(PureWhite)
-          ) {
-            listOf("2026", "2025").forEach { year ->
-              DropdownMenuItem(
-                text = { Text(year, color = TextPrimary) },
-                onClick = {
-                  selectedYear = year
-                  yearDropdownOpen = false
-                }
-              )
-            }
-          }
-        }
-      }
+      onBackClick = onBackClick
     )
     Column(
       modifier = Modifier
@@ -228,7 +191,7 @@ fun HistoryScreen(
               .padding(vertical = 6.dp),
             contentAlignment = Alignment.Center
           ) {
-            Text("Cycles (${pastCycles.size})", style = MaterialTheme.typography.labelSmall.copy(color = if (!showSummaryTab) ForestGreenPrimary else TextSecondary, fontWeight = FontWeight.SemiBold))
+            Text("Weeks (${pastCycles.size})", style = MaterialTheme.typography.labelSmall.copy(color = if (!showSummaryTab) ForestGreenPrimary else TextSecondary, fontWeight = FontWeight.SemiBold))
           }
           Box(
             modifier = Modifier
@@ -276,7 +239,7 @@ fun HistoryScreen(
               )
               Spacer(modifier = Modifier.height(10.dp))
               Text(
-                text = "No closed cycles yet",
+                text = "No closed weeks yet",
                 style = MaterialTheme.typography.titleSmall.copy(
                   fontWeight = FontWeight.Bold,
                   color = TextPrimary
@@ -284,7 +247,7 @@ fun HistoryScreen(
               )
               Spacer(modifier = Modifier.height(4.dp))
               Text(
-                text = "When current weekly cycles close, their permanent records and summary audits will appear here.",
+                text = "When current weeks close, their permanent records and summary audits will appear here.",
                 style = MaterialTheme.typography.bodySmall.copy(
                   color = TextSecondary,
                   textAlign = TextAlign.Center
@@ -493,29 +456,16 @@ fun HistoryScreen(
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // PDF & Export Actions
+        // Export Actions
         Row(
           modifier = Modifier.fillMaxWidth(),
           horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-          Button(
-            onClick = {
-              Toast.makeText(context, "Generated $groupName Audit PDF", Toast.LENGTH_SHORT).show()
-            },
-            modifier = Modifier.weight(1f).height(48.dp),
-            shape = RoundedCornerShape(8.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-          ) {
-            Icon(Icons.Default.FileDownload, contentDescription = null, tint = PureWhite, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Download PDF", fontSize = 13.sp, color = PureWhite, fontWeight = FontWeight.SemiBold)
-          }
-
           OutlinedButton(
             onClick = {
               val sendIntent = Intent().apply {
                 action = Intent.ACTION_SEND
-                putExtra(Intent.EXTRA_TEXT, "$groupName — Total Ledger Balance: GHS ${String.format(Locale.US, "%.0f", totalCollectedAmount)} across $totalClosedCyclesCount cycles.")
+                putExtra(Intent.EXTRA_TEXT, "$groupName — Total Ledger Balance: GHS ${String.format(Locale.US, "%.0f", totalCollectedAmount)} across $totalClosedCyclesCount weeks.")
                 type = "text/plain"
               }
               context.startActivity(Intent.createChooser(sendIntent, "Share Summary"))
@@ -551,7 +501,7 @@ fun HistoryScreen(
           Text("Payment Records (${cyclePayments.size})", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
           Spacer(modifier = Modifier.height(6.dp))
           if (cyclePayments.isEmpty()) {
-            Text("No payments logged for this cycle.", fontSize = 12.sp, color = TextSecondary)
+            Text("No payments logged for this week.", fontSize = 12.sp, color = TextSecondary)
           } else {
             cyclePayments.forEach { p ->
               val refText = if (!p.idempotencyKey.isNull_or_empty()) " (${p.method})" else ""
@@ -564,13 +514,17 @@ fun HistoryScreen(
         Button(
           onClick = {
             selectedPastCycleForDetail = null
-            Toast.makeText(context, "Downloaded ${item.week} PDF Report", Toast.LENGTH_SHORT).show()
+            LedgerExport.shareCycleCsv(
+              context = context,
+              payments = cyclePayments,
+              subjectLabel = "SusuLedger_${item.week.replace(" ", "")}_Export.csv"
+            )
           },
           colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
         ) {
-          Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp), tint = PureWhite)
+          Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp), tint = PureWhite)
           Spacer(modifier = Modifier.width(6.dp))
-          Text("Download PDF", color = PureWhite)
+          Text("Share CSV Ledger", color = PureWhite)
         }
       },
       dismissButton = {
@@ -586,7 +540,7 @@ fun HistoryScreen(
     AlertDialog(
       onDismissRequest = { showAllCyclesModal = false },
       title = {
-        Text("All Past Cycles (${pastCycles.size})", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+        Text("All Past Weeks (${pastCycles.size})", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
       },
       text = {
         Column(

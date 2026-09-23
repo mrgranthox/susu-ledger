@@ -35,6 +35,42 @@ val ErrorRed = Color(0xFFD32F2F)
 val ErrorBorderRed = Color(0xFFFFCDD2)
 val SuccessGreen = Color(0xFF1B5E3B)
 
+// Audit remediation tokens (v2.1) — semantic aliases replacing raw hex literals
+// Warning / Amber family (single source of truth)
+val WarningAmber = Color(0xFFD97706)
+val WarningAmberBg = Color(0xFFFEF3C7)
+val WarningAmberBorder = Color(0xFFF59E0B)
+val WarningAmberText = Color(0xFF92400E)
+val WarningTextDeep = Color(0xFF78350F)
+val AmberTextDeep = Color(0xFFB7791F)
+
+// Danger family
+val DangerRed = Color(0xFFDC2626)
+val DangerRedBg = Color(0xFFFEF2F2)
+val ErrorBgLight = Color(0xFFFFEBEE)
+
+// Neutral surfaces & tracks
+val NeutralSurfaceLight = Color(0xFFF8FAFC)
+val NeutralSurfaceMedium = Color(0xFFF1F5F9)
+val NeutralSurfaceMuted = Color(0xFFF3F4F6)
+val NeutralTrack = Color(0xFFE2E8F0)
+val NeutralTrackLight = Color(0xFFF0F0F0)
+val NeutralBorderStrong = Color(0xFFCBD5E1)
+val OffWhiteSurface = Color(0xFFF9FBF9)
+
+// Accent fills
+val SoftGreenFill = Color(0xFFD4EBDD)
+val SoftGreenTint = Color(0xFFF0F4F2)
+val DebitGreen = Color(0xFF166534)
+val CreditBlue = Color(0xFF1E40AF)
+val SkyBlue = Color(0xFF0284C7)
+val TealDeep = Color(0xFF0F766E)
+val WhatsAppBubbleGreen = Color(0xFFD9FDD3)
+
+// Official WhatsApp brand palette (bot surfaces only)
+val WhatsAppBrandGreen = Color(0xFF25D366)
+val WhatsAppChatBg = Color(0xFFEFEAE2)
+
 // Compatibility aliases
 val WhatsAppGreen = Color(0xFF1B5E3B)
 val CashBlue = Color(0xFF4A5568)

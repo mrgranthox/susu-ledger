@@ -12,6 +12,7 @@ before(async () => {
   assert.equal(process.env.SUSU_TEST_DATABASE, 'isolated');
   await db.query(readFileSync('../database/01_schema.sql', 'utf8'));
   await db.query(readFileSync('../database/02_pairings.sql', 'utf8'));
+  await db.query(readFileSync('../database/05_week_notifications.sql', 'utf8'));
 });
 after(() => db.pool.end());
 
@@ -150,6 +151,53 @@ test('provider failures retain a queued receipt without undoing or duplicating p
     assert.equal(attempts,2);
     assert.equal((await db.query('SELECT id FROM payments WHERE cycle_id=$1',[payload.cycles[0].id])).rowCount,1);
   } finally { sender.mock.restore(); }
+});
+
+test('late-week claims keep their cycle and disconnected groups cannot submit claims', async () => {
+  const payload=fixture(); payload.payments=[];
+  await syncGroup(payload,payload.treasurer.phone);
+  await registerPairing('LATE01',payload.group.id,payload.treasurer.phone);
+  await consumePairing('LATE01',payload.treasurer.phone);
+  payload.cycles[0].state='closed';
+  payload.cycles.push({...payload.cycles[0],id:randomUUID(),number:2,state:'open'});
+  await syncGroup(payload,payload.treasurer.phone);
+  const whatsapp=require('../src/services/whatsappService');
+  const replies=[];
+  const text=mock.method(whatsapp,'sendWhatsAppTextMessage',async(to,body)=>replies.push(body));
+  const interactive=mock.method(whatsapp,'sendWhatsAppInteractiveMessage',async(to,body)=>replies.push(body.text));
+  try {
+    const {handleIncomingWhatsAppMessage:handle}=require('../src/services/stateMachine');
+    await handle(payload.members[0].phone,'PAID WEEK 1');
+    assert.match(replies.at(-1),/Week 1/);
+    await handle(payload.members[0].phone,'','CONFIRM_AMOUNT_50.00');
+    const claim=(await db.query('SELECT cycle_id FROM claims WHERE member_id=$1',[payload.members[0].id])).rows[0];
+    assert.equal(claim.cycle_id,payload.cycles[0].id);
+    await handle(payload.treasurer.phone,'DISCONNECT');
+    await handle(payload.members[0].phone,'PAID');
+    assert.match(replies.at(-1),/disconnected/);
+    assert.equal((await db.query('SELECT id FROM claims WHERE member_id=$1',[payload.members[0].id])).rowCount,1);
+  } finally {text.mock.restore();interactive.mock.restore();}
+});
+
+test('recent member conversation uses a text receipt and week notices are idempotent', async () => {
+  const payload=fixture(); payload.receiptPaymentIds=[payload.payments[0].id];
+  await syncGroup(payload,payload.treasurer.phone);
+  const identity=(await db.query('SELECT identity_id FROM members WHERE id=$1',[payload.members[0].id])).rows[0].identity_id;
+  await db.query("UPDATE identities SET dpc_consent_granted=TRUE WHERE id=$1",[identity]);
+  await db.query("INSERT INTO message_log(identity_id,phone,direction,body) VALUES($1,$2,'IN','PAID')",[identity,payload.members[0].phone]);
+  await registerPairing('NOTICE',payload.group.id,payload.treasurer.phone); await consumePairing('NOTICE',payload.treasurer.phone);
+  const whatsapp=require('../src/services/whatsappService'); const replies=[];
+  const text=mock.method(whatsapp,'sendWhatsAppTextMessage',async(to,body)=>replies.push(body));
+  try {
+    assert.equal(await require('../src/services/receiptService').dispatchReceipt(payload.payments[0].id),true);
+    assert.match(replies[0],/payment receipt/);
+    payload.cycles[0].state='closed'; payload.cycles.push({...payload.cycles[0],id:randomUUID(),number:2,state:'open'});
+    await syncGroup(payload,payload.treasurer.phone); await syncGroup(payload,payload.treasurer.phone);
+    const dispatch=require('../src/services/weekNotificationService').dispatchWeekNotification;
+    await dispatch(payload.group.id); await dispatch(payload.group.id);
+    assert.equal(replies.length,2);
+    assert.match(replies[1],/Week 2 is open/);
+  } finally {text.mock.restore();}
 });
 
 test('HTTP auth fails closed; signed webhook processes batches once and retries failures', async () => {

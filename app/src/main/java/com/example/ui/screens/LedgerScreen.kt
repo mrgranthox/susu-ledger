@@ -1,5 +1,15 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.CreditBlue
+import com.example.ui.theme.DangerRed
+import com.example.ui.theme.DebitGreen
+import com.example.ui.theme.NeutralBorderStrong
+import com.example.ui.theme.NeutralSurfaceLight
+import com.example.ui.theme.NeutralSurfaceMedium
+import com.example.ui.theme.NeutralTrack
+import com.example.ui.theme.SoftGreenFill
+
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -70,8 +80,6 @@ import com.example.ui.components.StandardNavTopBar
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-import com.example.ui.components.StandardNavTopBar
 
 @Composable
 fun LedgerScreen(
@@ -149,7 +157,7 @@ fun LedgerScreen(
     LazyColumn(
       modifier = Modifier
         .fillMaxSize()
-        .background(Color(0xFFF8FAFC))
+        .background(NeutralSurfaceLight)
         .padding(paddingValues)
         .padding(horizontal = 16.dp)
     ) {
@@ -249,7 +257,7 @@ private fun IntegrityBanner(report: VerificationReport) {
       Icon(
         imageVector = if (report.isChainValid) Icons.Default.CheckCircle else Icons.Default.Security,
         contentDescription = null,
-        tint = if (report.isChainValid) SuccessGreen else Color(0xFFDC2626),
+        tint = if (report.isChainValid) SuccessGreen else DangerRed,
         modifier = Modifier.size(24.dp)
       )
       Spacer(modifier = Modifier.width(10.dp))
@@ -258,7 +266,7 @@ private fun IntegrityBanner(report: VerificationReport) {
           text = if (report.isChainValid) "100% Verified & Balanced" else "Ledger Verification Warning",
           fontWeight = FontWeight.Bold,
           fontSize = 14.sp,
-          color = if (report.isChainValid) Color(0xFF166534) else Color(0xFF991B1B)
+          color = if (report.isChainValid) DebitGreen else Color(0xFF991B1B)
         )
         Text(
           text = "${report.totalBlocks} Entries Verified • Audit Chain Intact • Dual Entry Balanced (Debits = Credits = GHS ${String.format(java.util.Locale.US, "%.0f", report.totalDebits)})",
@@ -302,7 +310,7 @@ private fun DoubleEntryBalanceCard(ledgerEntries: List<LedgerEntryEntity>) {
             text = "DEBITS = CREDITS (BALANCED)",
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF166534),
+            color = DebitGreen,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
           )
         }
@@ -320,7 +328,7 @@ private fun DoubleEntryBalanceCard(ledgerEntries: List<LedgerEntryEntity>) {
             text = "GHS ${String.format(java.util.Locale.US, "%.2f", totalDebits)}",
             fontWeight = FontWeight.Black,
             fontSize = 16.sp,
-            color = Color(0xFF166534)
+            color = DebitGreen
           )
         }
 
@@ -330,7 +338,7 @@ private fun DoubleEntryBalanceCard(ledgerEntries: List<LedgerEntryEntity>) {
             text = "GHS ${String.format(java.util.Locale.US, "%.2f", totalCredits)}",
             fontWeight = FontWeight.Black,
             fontSize = 16.sp,
-            color = Color(0xFF1E40AF)
+            color = CreditBlue
           )
         }
       }
@@ -400,7 +408,7 @@ private fun JournalTransactionCard(
             text = "${if (entry.entryType == "debit") "Dr." else "  Cr."} ${entry.accountName}",
             fontSize = 12.sp,
             fontWeight = if (entry.entryType == "debit") FontWeight.Medium else FontWeight.Normal,
-            color = if (entry.entryType == "debit") Color(0xFF166534) else Color(0xFF1E40AF)
+            color = if (entry.entryType == "debit") DebitGreen else CreditBlue
           )
           Text(
             text = "GHS ${String.format(java.util.Locale.US, "%.2f", entry.amount)}",
@@ -428,8 +436,8 @@ private fun GenesisBlockCard() {
   Card(
     modifier = Modifier.fillMaxWidth(),
     shape = RoundedCornerShape(10.dp),
-    colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9)),
-    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFCBD5E1))
+    colors = CardDefaults.cardColors(containerColor = NeutralSurfaceMedium),
+    border = androidx.compose.foundation.BorderStroke(1.dp, NeutralBorderStrong)
   ) {
     Row(
       modifier = Modifier.padding(12.dp),
@@ -439,7 +447,7 @@ private fun GenesisBlockCard() {
         modifier = Modifier
           .size(32.dp)
           .clip(CircleShape)
-          .background(Color(0xFFE2E8F0)),
+          .background(NeutralTrack),
         contentAlignment = Alignment.Center
       ) {
         Text("0", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = TextSecondary)
@@ -481,7 +489,7 @@ private fun BlockChainCard(
             modifier = Modifier
               .size(28.dp)
               .clip(CircleShape)
-              .background(Color(0xFFD4EBDD)),
+              .background(SoftGreenFill),
             contentAlignment = Alignment.Center
           ) {
             Text("#$index", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = ForestGreenPrimary)

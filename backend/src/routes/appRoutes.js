@@ -81,6 +81,13 @@ router.get('/pair-bot/:code', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+router.get('/groups/:id/bot-connection', async (req,res,next) => {
+  try {
+    const result=await db.query("SELECT 1 FROM bot_pairings WHERE group_id=$1 AND status='PAIRED' LIMIT 1",[cloudId(req.params.id)]);
+    res.json({status:result.rowCount ? 'CONNECTED' : 'DISCONNECTED'});
+  } catch(error) { next(error); }
+});
+
 // 0b. Register/Refresh Dynamic Bot Pairing Code
 router.post('/groups/:id/claims/:claimId/reject', async (req,res) => {
   try {
@@ -287,8 +294,8 @@ router.get('/groups/:id/cycles/active', async (req, res) => {
        FROM claims c 
        JOIN members m ON c.member_id = m.id 
        JOIN identities i ON m.identity_id = i.id 
-       WHERE c.cycle_id = $1 AND c.state = 'pending'`,
-      [cycle.id]
+       WHERE m.group_id = $1`,
+      [req.params.id]
     );
 
     res.json({

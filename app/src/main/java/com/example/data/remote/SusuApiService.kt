@@ -25,6 +25,9 @@ interface SusuApiService {
   @GET("api/app/pair-bot/{code}")
   suspend fun getPairingStatus(@Path("code") code: String): Response<PairingStatusResponse>
 
+  @GET("api/app/groups/{id}/bot-connection")
+  suspend fun getBotConnection(@Path("id") groupId: String): Response<PairingStatusResponse>
+
   @POST("api/app/groups/{groupId}/claims/{claimId}/reject")
   suspend fun rejectClaim(
     @Path("groupId") groupId: String,

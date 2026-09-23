@@ -80,6 +80,12 @@ async function syncGroup(payload, authenticatedPhone) {
          ON CONFLICT(id) DO UPDATE SET amount_due=EXCLUDED.amount_due,due_date=EXCLUDED.due_date,state=EXCLUDED.state,closed_at=EXCLUDED.closed_at,closed_by=EXCLUDED.closed_by`,
         [cloudId(cycle.id),groupId,cycle.number,cycle.amountDue,cycle.dueDate,cycle.state,cycle.closedAt ? new Date(cycle.closedAt) : null,cycle.closedAt ? identity.id : null]
       );
+      if (!owner && cycle.number > 1 && cycle.state === 'open') {
+        await client.query(`INSERT INTO week_notifications(cycle_id,member_id)
+          SELECT $1,m.id FROM members m JOIN identities i ON i.id=m.identity_id
+          WHERE m.group_id=$2 AND m.state='active' AND i.dpc_consent_granted=TRUE
+          ON CONFLICT DO NOTHING`,[cloudId(cycle.id),groupId]);
+      }
     }
     const acknowledged = [];
     for (const payment of payments) {

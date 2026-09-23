@@ -20,7 +20,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Spa
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -189,13 +188,6 @@ fun SplashScreen(
         }
 
         Spacer(modifier = Modifier.height(12.dp))
-
-        Text(
-          text = "Pure Information Layer • Funds never pass through our servers",
-          fontSize = 11.sp,
-          color = TextSecondary,
-          textAlign = TextAlign.Center
-        )
       }
     }
   }

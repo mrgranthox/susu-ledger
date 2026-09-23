@@ -1,5 +1,10 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.AmberTextDeep
+import com.example.ui.theme.NeutralSurfaceLight
+import com.example.ui.theme.NeutralTrackLight
+
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,6 +48,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -545,7 +551,7 @@ private fun EnhancedMemberRowItem(
               Text(
                 text = "Partial: GHS ${String.format(Locale.US, "%.0f", paidAmount)}/${String.format(Locale.US, "%.0f", targetAmount)}",
                 style = MaterialTheme.typography.labelSmall.copy(
-                  color = Color(0xFFB7791F),
+                  color = AmberTextDeep,
                   fontWeight = FontWeight.Bold,
                   fontSize = 11.sp
                 ),
@@ -555,7 +561,7 @@ private fun EnhancedMemberRowItem(
           }
           else -> {
             Surface(
-              color = Color(0xFFF7FAFC),
+              color = NeutralSurfaceLight,
               shape = RoundedCornerShape(6.dp),
               border = BorderStroke(1.dp, BorderGrey)
             ) {
@@ -588,7 +594,7 @@ private fun EnhancedMemberRowItem(
           isPartial -> HeroAmber
           else -> BorderGrey
         },
-        trackColor = Color(0xFFF0F0F0)
+        trackColor = NeutralTrackLight
       )
 
       Spacer(modifier = Modifier.height(8.dp))
@@ -600,9 +606,9 @@ private fun EnhancedMemberRowItem(
       ) {
         if (isPartial) {
           Text(
-            text = "Remaining balance: GHS ${String.format(Locale.US, "%.2f", remainingAmount)}",
+            text = "Remaining balance: GHS ${String.format(Locale.US, "%.0f", remainingAmount)}",
             style = MaterialTheme.typography.bodySmall.copy(
-              color = Color(0xFFB7791F),
+              color = AmberTextDeep,
               fontWeight = FontWeight.SemiBold,
               fontSize = 12.sp
             )
@@ -617,7 +623,7 @@ private fun EnhancedMemberRowItem(
           )
         } else {
           Text(
-            text = "Target due: GHS ${String.format(Locale.US, "%.2f", targetAmount)}",
+            text = "Target due: GHS ${String.format(Locale.US, "%.0f", targetAmount)}",
             style = MaterialTheme.typography.bodySmall.copy(
               color = TextSecondary,
               fontSize = 12.sp
@@ -629,7 +635,7 @@ private fun EnhancedMemberRowItem(
         if (!isPaid) {
           OutlinedButton(
             onClick = onRecordPayment,
-            modifier = Modifier.height(30.dp),
+            modifier = Modifier.minimumInteractiveComponentSize(),
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
             border = BorderStroke(1.dp, if (isPartial) HeroAmber else ForestGreenPrimary),
             shape = RoundedCornerShape(6.dp)

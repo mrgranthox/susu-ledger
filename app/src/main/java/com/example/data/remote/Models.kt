@@ -21,7 +21,8 @@ data class SyncGroupResponse(
   val groupId: String,
   val acknowledgedPaymentIds: List<String>,
   val acceptedReceiptIds: List<String> = emptyList(),
-  val pendingReceiptCount: Int = 0
+  val pendingReceiptCount: Int = 0,
+  val pendingNotificationCount: Int = 0
 )
 data class PairingStatusResponse(val status: String)
 

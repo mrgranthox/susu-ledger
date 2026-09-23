@@ -1,5 +1,10 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.DangerRed
+import com.example.ui.theme.NeutralSurfaceLight
+import com.example.ui.theme.NeutralSurfaceMedium
+
+
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -33,6 +38,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SheetState
@@ -56,7 +62,7 @@ import com.example.ui.theme.BorderGrey
 import com.example.ui.theme.ForestGreenPrimary
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
-import com.example.ui.theme.WhatsAppGreen
+import com.example.ui.theme.WhatsAppBrandGreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -97,7 +103,7 @@ fun AppPairingSheet(
         Icon(
           imageVector = Icons.AutoMirrored.Filled.Chat,
           contentDescription = null,
-          tint = WhatsAppGreen,
+          tint = WhatsAppBrandGreen,
           modifier = Modifier.size(28.dp)
         )
       }
@@ -125,7 +131,7 @@ fun AppPairingSheet(
       Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+        colors = CardDefaults.cardColors(containerColor = NeutralSurfaceLight),
         border = androidx.compose.foundation.BorderStroke(1.5.dp, BorderGrey)
       ) {
         Column(
@@ -185,7 +191,7 @@ fun AppPairingSheet(
             Icon(
               imageVector = Icons.Default.Timer,
               contentDescription = null,
-              tint = Color(0xFFDC2626),
+              tint = DangerRed,
               modifier = Modifier.size(16.dp)
             )
             Spacer(modifier = Modifier.width(6.dp))
@@ -193,7 +199,7 @@ fun AppPairingSheet(
               text = "Expires in $timeString (15-min TTL)",
               style = MaterialTheme.typography.bodySmall.copy(
                 fontWeight = FontWeight.SemiBold,
-                color = Color(0xFFDC2626)
+                color = DangerRed
               )
             )
           }
@@ -202,7 +208,7 @@ fun AppPairingSheet(
 
           OutlinedButton(
             onClick = onGenerateNewCode,
-            modifier = Modifier.height(34.dp),
+            modifier = Modifier.minimumInteractiveComponentSize(),
             shape = RoundedCornerShape(8.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp)
           ) {
@@ -216,7 +222,7 @@ fun AppPairingSheet(
       // Secure Bot Gateway status
       Surface(
         shape = RoundedCornerShape(8.dp),
-        color = Color(0xFFF1F5F9),
+        color = NeutralSurfaceMedium,
         modifier = Modifier.fillMaxWidth()
       ) {
         Row(
@@ -260,7 +266,7 @@ fun AppPairingSheet(
           .testTag("open_whatsapp_pairing_button"),
         shape = RoundedCornerShape(10.dp),
         colors = ButtonDefaults.buttonColors(
-          containerColor = WhatsAppGreen,
+          containerColor = WhatsAppBrandGreen,
           contentColor = Color.White
         )
       ) {

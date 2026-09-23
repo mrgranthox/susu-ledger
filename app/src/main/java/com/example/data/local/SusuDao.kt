@@ -191,6 +191,9 @@ interface SusuDao {
   @Query("SELECT * FROM claims WHERE cycle_id = :cycleId AND state = 'pending' ORDER BY created_at DESC")
   fun getPendingClaimsForCycle(cycleId: String): Flow<List<ClaimEntity>>
 
+  @Query("SELECT claims.* FROM claims JOIN cycles ON claims.cycle_id = cycles.id WHERE cycles.group_id = :groupId AND claims.state = 'pending' ORDER BY claims.created_at DESC")
+  fun getPendingClaimsForGroup(groupId: String): Flow<List<ClaimEntity>>
+
   @Query("SELECT * FROM claims ORDER BY created_at DESC")
   fun getAllClaims(): Flow<List<ClaimEntity>>
 

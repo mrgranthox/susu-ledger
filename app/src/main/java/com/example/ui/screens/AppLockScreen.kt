@@ -1,5 +1,10 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.NeutralSurfaceLight
+import com.example.ui.theme.NeutralSurfaceMedium
+import com.example.ui.theme.NeutralTrack
+
+
 import android.app.Activity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
@@ -21,7 +26,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Backspace
-import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
@@ -35,7 +39,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -73,8 +76,7 @@ import kotlinx.coroutines.launch
 fun AppLockScreen(
   groupName: String = "Susu Group",
   onVerifyPin: ((enteredPin: String, onResult: (Boolean) -> Unit) -> Unit)? = null,
-  onUnlockSuccess: () -> Unit,
-  onSignOut: () -> Unit
+  onUnlockSuccess: () -> Unit
 ) {
   val context = LocalContext.current
   val activity = context as? Activity
@@ -201,16 +203,6 @@ fun AppLockScreen(
             )
           }
         }
-
-        // Sign Out option from Lock Screen
-        TextButton(
-          onClick = onSignOut,
-          modifier = Modifier.testTag("lock_screen_sign_out_btn")
-        ) {
-          Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Sign Out", tint = LineIconGrey, modifier = Modifier.size(16.dp))
-          Spacer(modifier = Modifier.width(4.dp))
-          Text("Sign Out", color = TextSecondary, fontSize = 12.sp)
-        }
       }
 
       // Middle: Lock status & PIN / Biometric entry
@@ -254,7 +246,7 @@ fun AppLockScreen(
               modifier = Modifier
                 .size(22.dp)
                 .clip(CircleShape)
-                .background(if (isFilled) ForestGreenPrimary else Color(0xFFE2E8F0))
+                .background(if (isFilled) ForestGreenPrimary else NeutralTrack)
                 .border(1.5.dp, if (isFilled) ForestGreenPrimary else BorderGrey, CircleShape)
             )
           }
@@ -355,19 +347,6 @@ fun AppLockScreen(
         }
 
         Spacer(modifier = Modifier.height(12.dp))
-
-        // Direct Sign Out / Switch Account Button
-        TextButton(
-          onClick = onSignOut,
-          modifier = Modifier
-            .fillMaxWidth()
-            .height(40.dp)
-            .testTag("lock_screen_bottom_sign_out_btn")
-        ) {
-          Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(16.dp))
-          Spacer(modifier = Modifier.width(6.dp))
-          Text("Sign Out / Switch Account", color = Color(0xFFDC2626), fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-        }
       }
     }
   }
@@ -403,7 +382,7 @@ private fun LockNumericKeypad(
                 .weight(1f)
                 .height(48.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFFF1F5F9))
+                .background(NeutralSurfaceMedium)
                 .clickable(onClick = onBackspace)
                 .testTag("keypad_del"),
               contentAlignment = Alignment.Center
@@ -421,7 +400,7 @@ private fun LockNumericKeypad(
                 .weight(1f)
                 .height(48.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFFF8FAFC))
+                .background(NeutralSurfaceLight)
                 .border(1.dp, BorderGrey, RoundedCornerShape(8.dp))
                 .clickable { onDigitClick(key) }
                 .testTag("keypad_$key"),
