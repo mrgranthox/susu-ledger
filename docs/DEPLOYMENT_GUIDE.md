@@ -152,6 +152,12 @@ to the handset.
 
 For SMS acceptance, enable Firebase phone sign-in, allow Ghana in the SMS region
 policy, and register SHA-1 and SHA-256 fingerprints for the actual signing key.
+Also inspect the API key referenced by `app/google-services.json`: its Android
+application restrictions must allow the package name and actual APK SHA-1.
+Firebase app fingerprint registration does not necessarily update this separate
+allowlist. Preserve existing signing certificates and API service restrictions.
+An HTTP 403 reporting that the Android client is blocked can occur before SMS
+dispatch when this allowlist does not match the installed APK.
 Repeat these steps for the release/Play signing key; debug-key verification
 does not validate a release build. Test SMS receipt, group creation, cloud sync,
 and the phone-bound WhatsApp pairing code on a real device.

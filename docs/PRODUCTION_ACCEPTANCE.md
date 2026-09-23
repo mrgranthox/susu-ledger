@@ -10,6 +10,11 @@ Last checked: 2026-09-23. This is not a full launch sign-off.
 - Cloud SQL schema includes persistent pairing, webhook deduplication, and receipt queue tables.
 - Runtime credentials are Secret Manager references, not raw environment values.
 - Firebase phone authentication allows Ghana; the local debug signing fingerprints are registered.
+- Corrected the Android API key allowlist to include the installed debug APK's
+  SHA-1 alongside the existing certificate. Verified the app uses that key and
+  its Firebase project-config request changed from HTTP 403 to HTTP 200 with
+  the matching Android package/certificate headers. SMS delivery still requires
+  a handset retry; this configuration probe does not send an SMS.
 
 ## Verified
 
