@@ -5,7 +5,7 @@ Last checked: 2026-09-23. This is not a full launch sign-off.
 ## Deployed Environment
 
 - Project: `susu-ledger-c3daa`; region: `africa-south1`.
-- Cloud Run: `susu-backend-00015-bx9`, production pairing-message correction.
+- Cloud Run: `susu-backend-00016-g8r`, bare-code pairing support.
 - Android/Meta endpoint: `https://susu-backend-965064733382.africa-south1.run.app`.
 - Cloud SQL schema includes persistent pairing, webhook deduplication, and receipt queue tables.
 - Runtime credentials are Secret Manager references, not raw environment values.
@@ -35,6 +35,15 @@ Last checked: 2026-09-23. This is not a full launch sign-off.
   claim rejection, receipt retry, and signed webhook retries/deduplication.
 
 ## Outstanding Gates
+
+Pairing follow-up: bare `ABC-DEF` messages now enter the pairing flow, alongside
+`PAIR:ABC-DEF` and `PAIR ABC-DEF`; `PAIR` alone returns guidance. Production
+silence was traced to PostgreSQL error 42P01: the legacy database lacked
+`bot_sessions`. Migration `04_bot_sessions.sql` was applied without dropping
+existing data. All 13 backend tests pass, including repeatable legacy-schema
+repair and command parsing. Android builds successfully; Copy now includes
+`PAIR:` and reopening the sheet reuses an unexpired code in the current process.
+Process-death persistence of pairing state is not covered by this change.
 
 Handset follow-up: authenticated group upload and pairing registration reached
 production successfully. Two newly registered codes were unexpired and pending;

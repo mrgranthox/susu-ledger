@@ -15,6 +15,14 @@ function normalizePhone(rawPhone) {
   return { cleanPhone, formattedPhone };
 }
 
+function parsePairingCommand(text) {
+  const value = String(text || '').trim().toUpperCase();
+  const prefixed = /^PAIR(?:\s*:\s*|\s+)(.*)$/.exec(value);
+  if (prefixed) return prefixed[1].trim();
+  if (value === 'PAIR') return '';
+  return /^[A-Z0-9]{3}-[A-Z0-9]{3}$/.test(value) ? value : null;
+}
+
 async function resolveIdentity(fromPhone, formattedPhone) {
   const cleanPhone = String(fromPhone || '').replace(/[^0-9]/g, '');
   const identityRes = await db.query(
@@ -302,8 +310,8 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
     metaStatus: 'received',
   });
 
-  if (cleanText.startsWith('PAIR:') || cleanText.startsWith('PAIR ')) {
-    const rawCode = cleanText.replace('PAIR:', '').replace('PAIR', '').trim();
+  const rawCode = parsePairingCommand(cleanText);
+  if (rawCode !== null) {
     if (rawCode) {
       const pairSession = await consumePairing(rawCode, formattedPhone);
       if (pairSession) {
@@ -332,6 +340,8 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
       );
       return;
     }
+    await sendWhatsAppTextMessage(fromPhone, 'Send the pairing code shown in SusuLedger, for example PAIR:ABC-DEF, from the same number you verified by SMS.', identityId);
+    return;
   }
 
   const memberships = await getActiveMemberships(identityId);
@@ -466,4 +476,5 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
 module.exports = {
   handleIncomingWhatsAppMessage,
   parseAmount,
+  parsePairingCommand,
 };

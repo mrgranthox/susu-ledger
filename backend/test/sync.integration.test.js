@@ -15,6 +15,24 @@ before(async () => {
 });
 after(() => db.pool.end());
 
+test('legacy bot schema migrations repair missing tables and columns idempotently', async () => {
+  const client=await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DROP TABLE bot_sessions');
+    await client.query('ALTER TABLE message_log DROP COLUMN phone');
+    for(let attempt=0;attempt<2;attempt++) {
+      await client.query(readFileSync('../database/03_message_log_phone.sql','utf8'));
+      await client.query(readFileSync('../database/04_bot_sessions.sql','utf8'));
+    }
+    await client.query('SELECT identity_id,current_state,selected_group_id,pairing_code,pairing_expires_at,context_data,updated_at FROM bot_sessions');
+    await client.query('SELECT phone FROM message_log');
+  } finally {
+    await client.query('ROLLBACK');
+    client.release();
+  }
+});
+
 let counter = 0;
 function fixture() {
   const treasurer = { id:randomUUID(),phone:`+23324000${String(++counter).padStart(4,'0')}`,displayName:'Test Treasurer' };
@@ -78,6 +96,14 @@ test('pairing is phone-bound, expires, and is consumed once across concurrent re
   await registerPairing('EXPIRE',payload.group.id,payload.treasurer.phone);
   await db.query("UPDATE bot_pairings SET expires_at=clock_timestamp()-interval '1 second' WHERE code='EXPIRE'");
   assert.equal(await consumePairing('EXPIRE',payload.treasurer.phone),undefined);
+});
+
+test('pairing parser accepts copied codes and command variants without stealing other commands', () => {
+  const { parsePairingCommand } = require('../src/services/stateMachine');
+  for (const input of ['ABC-DEF', ' abc-def ', 'PAIR:ABC-DEF', 'pair abc-def', 'PAIR : ABC-DEF']) assert.equal(parsePairingCommand(input),'ABC-DEF');
+  assert.equal(parsePairingCommand('PAIR'), '');
+  assert.equal(parsePairingCommand('PAIR:'), '');
+  for (const input of ['BALANCE','PAID','50','MOMO:12345','hello']) assert.equal(parsePairingCommand(input),null);
 });
 
 test('legacy local IDs map deterministically; invalid amounts are rejected', () => {

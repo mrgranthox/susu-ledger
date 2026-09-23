@@ -70,7 +70,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   val userPhone: StateFlow<String> = _userPhone.asStateFlow()
 
   // WhatsApp Bot State & Single Unified Dynamic Pairing Code
-  private val _pairingCode = MutableStateFlow(CryptoUtils.generatePairingCode())
+  private val _pairingCode = MutableStateFlow("")
   val pairingCode: StateFlow<String> = _pairingCode.asStateFlow()
   val botPairingCode: StateFlow<String> = _pairingCode.asStateFlow()
 
@@ -346,7 +346,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   }
 
   // Pairing code countdown (dynamically initialized)
-  private val _pairingSecondsRemaining = MutableStateFlow(900) // 15 mins remaining
+  private val _pairingSecondsRemaining = MutableStateFlow(0)
   val pairingSecondsRemaining: StateFlow<Int> = _pairingSecondsRemaining.asStateFlow()
 
   // Success toast message
@@ -793,7 +793,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
 
   fun showPairingSheet(show: Boolean) {
     _showPairingSheet.value = show
-    if (show) generateNewPairingCode()
+    if (show && _pairingSecondsRemaining.value <= 0) generateNewPairingCode()
   }
 
   fun addNewMember(alias: String, phone: String) {

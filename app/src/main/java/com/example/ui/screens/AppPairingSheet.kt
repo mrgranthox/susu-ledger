@@ -164,7 +164,7 @@ fun AppPairingSheet(
 
             IconButton(
               onClick = {
-                clipboard.setText(AnnotatedString(pairingCode))
+                clipboard.setText(AnnotatedString("PAIR:$pairingCode"))
                 Toast.makeText(context, "Pairing code copied to clipboard", Toast.LENGTH_SHORT).show()
               }
             ) {
