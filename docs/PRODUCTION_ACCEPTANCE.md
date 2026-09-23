@@ -5,7 +5,7 @@ Last checked: 2026-09-23. This is not a full launch sign-off.
 ## Deployed Environment
 
 - Project: `susu-ledger-c3daa`; region: `africa-south1`.
-- Cloud Run: `susu-backend-00014-hey`, 100% production traffic.
+- Cloud Run: `susu-backend-00015-bx9`, production pairing-message correction.
 - Android/Meta endpoint: `https://susu-backend-965064733382.africa-south1.run.app`.
 - Cloud SQL schema includes persistent pairing, webhook deduplication, and receipt queue tables.
 - Runtime credentials are Secret Manager references, not raw environment values.
@@ -36,8 +36,20 @@ Last checked: 2026-09-23. This is not a full launch sign-off.
 
 ## Outstanding Gates
 
-- Actual handset SMS receipt, authenticated production group sync, and WhatsApp
-  pairing are awaiting interactive acceptance. Installation is not proof of these flows.
+Handset follow-up: authenticated group upload and pairing registration reached
+production successfully. Two newly registered codes were unexpired and pending;
+WhatsApp sent them from a different number than the SMS-verified owner. Pairing
+correctly rejected the mismatch, but the old response misleadingly blamed expiry.
+The bot response now explains the same-number requirement without disclosing
+the owner's phone. The mismatch test also verifies it does not consume the code.
+Migration `03_message_log_phone.sql` repairs the legacy production message-log
+table's missing phone column. A production insert was verified inside a rolled-back
+transaction; all 11 backend regression tests passed again.
+
+- Authenticated production group sync and pairing registration are observed.
+  The user confirmed sending the code from a different, non-member WhatsApp
+  number. Successful pairing still awaits a retry from the verified owner number;
+  membership alone must not authorize pairing the treasurer's app.
 - Meta templates `susu_friday_reminder`, `susu_payment_receipt`, and
   `susu_sunday_summary` are PENDING. The launch checker correctly fails these
   three gates; receipt failures remain queued rather than undoing payments.

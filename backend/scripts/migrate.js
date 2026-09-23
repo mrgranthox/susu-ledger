@@ -12,6 +12,7 @@ const db = require('../src/config/database');
       await client.query(fs.readFileSync(path.resolve(__dirname,'../../database/01_schema.sql'),'utf8'));
     }
     await client.query(fs.readFileSync(path.resolve(__dirname,'../../database/02_pairings.sql'),'utf8'));
+    await client.query(fs.readFileSync(path.resolve(__dirname,'../../database/03_message_log_phone.sql'),'utf8'));
     await client.query('COMMIT');
     console.log('Database schema is ready');
   } catch (error) {

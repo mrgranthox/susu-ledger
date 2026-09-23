@@ -327,7 +327,7 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
 
       await sendWhatsAppTextMessage(
         fromPhone,
-        `Pairing code expired or not found.\nCode ${rawCode} is invalid or past its 15-minute validity window. Please generate a new code in the mobile app.`,
+        'Unable to pair this WhatsApp account.\nSend the code from the same phone number you verified by SMS in SusuLedger. Codes are valid for 15 minutes and can only be used once. If you are using the verified number, generate a new code in the app and wait for registration to complete.',
         identityId
       );
       return;

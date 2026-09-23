@@ -72,6 +72,7 @@ test('pairing is phone-bound, expires, and is consumed once across concurrent re
   const payload=fixture(); await syncGroup(payload,payload.treasurer.phone);
   await registerPairing('ABC-DEF',payload.group.id,payload.treasurer.phone);
   assert.equal(await consumePairing('ABC-DEF',payload.members[0].phone),undefined);
+  assert.equal((await db.query("SELECT status FROM bot_pairings WHERE code='ABC-DEF'")).rows[0].status,'PENDING_WHATSAPP_CONFIRMATION');
   const attempts=await Promise.all([consumePairing('ABC-DEF',payload.treasurer.phone),consumePairing('ABC-DEF',payload.treasurer.phone)]);
   assert.equal(attempts.filter(Boolean).length,1);
   await registerPairing('EXPIRE',payload.group.id,payload.treasurer.phone);
