@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "965064733382",
+    "project_id": "susu-ledger-c3daa",
+    "storage_bucket": "susu-ledger-c3daa.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:965064733382:android:c8980d4d874665171cddc7",
+        "android_client_info": {
+          "package_name": "com.aistudio.susuledger.wtxm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDw6O9cno_KR2I6iui9sqDnj1KJBbETbuA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

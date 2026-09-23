@@ -4,6 +4,7 @@ require('dotenv').config();
 
 const PHONE_NUMBER_ID = process.env.META_WHATSAPP_PHONE_NUMBER_ID || process.env.WHATSAPP_PHONE_ID;
 const ACCESS_TOKEN = process.env.META_WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_TOKEN;
+const metaClient = axios.create({ timeout: 10000 });
 
 async function logMessage({ identityId, phone, direction, body, metaStatus }) {
   try {
@@ -18,11 +19,11 @@ async function logMessage({ identityId, phone, direction, body, metaStatus }) {
 }
 
 async function sendWhatsAppTextMessage(toPhone, textBody, identityId = null) {
-  const phoneId = PHONE_NUMBER_ID || '1419022297952379';
-  const metaUrl = `https://graph.facebook.com/v20.0/${phoneId}/messages`;
+  if (!PHONE_NUMBER_ID || !ACCESS_TOKEN) throw new Error('WhatsApp is not configured');
+  const metaUrl = `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`;
 
   try {
-    const res = await axios.post(
+    const res = await metaClient.post(
       metaUrl,
       {
         messaging_product: 'whatsapp',
@@ -38,18 +39,18 @@ async function sendWhatsAppTextMessage(toPhone, textBody, identityId = null) {
         },
       }
     );
-    await logMessage({ identityId, phone: toPhone, direction: 'OUT', body: textBody, metaStatus: 'delivered' });
+    await logMessage({ identityId, phone: toPhone, direction: 'OUT', body: textBody, metaStatus: 'sent' });
     return res.data;
   } catch (err) {
-    console.error('[WhatsApp Cloud API Error]', err.response?.data || err.message);
-    await logMessage({ identityId, phone: toPhone, direction: 'OUT', body: textBody, metaStatus: 'dispatched' });
-    return { status: 'dispatched', response: err.response?.data || err.message };
+    console.error('[WhatsApp Cloud API Error]', err.response?.status, err.response?.data?.error?.code);
+    await logMessage({ identityId, phone: toPhone, direction: 'OUT', body: textBody, metaStatus: 'failed' });
+    throw new Error('WhatsApp provider rejected the message');
   }
 }
 
 async function sendWhatsAppInteractiveMessage(toPhone, options, identityId = null) {
-  const phoneId = PHONE_NUMBER_ID || '1419022297952379';
-  const metaUrl = `https://graph.facebook.com/v20.0/${phoneId}/messages`;
+  if (!PHONE_NUMBER_ID || !ACCESS_TOKEN) throw new Error('WhatsApp is not configured');
+  const metaUrl = `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`;
   const bodyText = options.text || options.bodyText || '';
   const buttons = options.buttons || [];
 
@@ -59,7 +60,7 @@ async function sendWhatsAppInteractiveMessage(toPhone, options, identityId = nul
       reply: { id: b.id, title: b.title.substring(0, 20) },
     }));
 
-    const res = await axios.post(
+    const res = await metaClient.post(
       metaUrl,
       {
         messaging_product: 'whatsapp',
@@ -84,28 +85,28 @@ async function sendWhatsAppInteractiveMessage(toPhone, options, identityId = nul
       phone: toPhone,
       direction: 'OUT',
       body: `${bodyText} [${buttons.map((b) => b.title).join(' | ')}]`,
-      metaStatus: 'delivered',
+      metaStatus: 'sent',
     });
     return res.data;
   } catch (err) {
-    console.error('[WhatsApp Interactive Error]', err.response?.data || err.message);
+    console.error('[WhatsApp Interactive Error]', err.response?.status, err.response?.data?.error?.code);
     await logMessage({
       identityId,
       phone: toPhone,
       direction: 'OUT',
       body: `${bodyText} [${buttons.map((b) => b.title).join(' | ')}]`,
-      metaStatus: 'dispatched',
+      metaStatus: 'failed',
     });
-    return { status: 'dispatched', response: err.response?.data || err.message };
+    throw new Error('WhatsApp provider rejected the interactive message');
   }
 }
 
 async function sendWhatsAppTemplate(toPhone, templateName, languageCode, parameters, identityId = null) {
-  const phoneId = PHONE_NUMBER_ID || '1419022297952379';
-  const metaUrl = `https://graph.facebook.com/v20.0/${phoneId}/messages`;
+  if (!PHONE_NUMBER_ID || !ACCESS_TOKEN) throw new Error('WhatsApp is not configured');
+  const metaUrl = `https://graph.facebook.com/v23.0/${PHONE_NUMBER_ID}/messages`;
 
   try {
-    const res = await axios.post(
+    const res = await metaClient.post(
       metaUrl,
       {
         messaging_product: 'whatsapp',
@@ -134,19 +135,19 @@ async function sendWhatsAppTemplate(toPhone, templateName, languageCode, paramet
       phone: toPhone,
       direction: 'OUT',
       body: `HSM Template: ${templateName}`,
-      metaStatus: 'delivered',
+      metaStatus: 'sent',
     });
     return res.data;
   } catch (err) {
-    console.error('[WhatsApp HSM Error]', err.response?.data || err.message);
+    console.error('[WhatsApp HSM Error]', err.response?.status, err.response?.data?.error?.code);
     await logMessage({
       identityId,
       phone: toPhone,
       direction: 'OUT',
       body: `HSM Template: ${templateName}`,
-      metaStatus: 'dispatched',
+      metaStatus: 'failed',
     });
-    return { status: 'dispatched', response: err.response?.data || err.message };
+    throw new Error('WhatsApp provider rejected the template');
   }
 }
 

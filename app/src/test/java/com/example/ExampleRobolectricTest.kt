@@ -13,7 +13,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [36], application = android.app.Application::class)
 class ExampleRobolectricTest {
 
   @Test
@@ -63,7 +63,7 @@ class ExampleRobolectricTest {
       .build()
     val dao = db.susuDao()
     com.example.data.local.SusuDatabase.populateInitialData(dao)
-    val repo = com.example.data.repository.SusuRepository(dao)
+    val repo = com.example.data.repository.SusuRepository(db)
 
     // Verify initial groups exist
     val groups = dao.getGroupById("group-nima-001")
@@ -115,7 +115,7 @@ class ExampleRobolectricTest {
       .build()
     val dao = db.susuDao()
     com.example.data.local.SusuDatabase.populateInitialData(dao)
-    val repo = com.example.data.repository.SusuRepository(dao)
+    val repo = com.example.data.repository.SusuRepository(db)
 
     val payments = dao.getAllPaymentsOnce()
     val ledgerEntries = dao.getAllLedgerEntriesOnce()

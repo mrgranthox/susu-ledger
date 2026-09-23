@@ -10,7 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '5mb', verify: (req, res, buffer) => { req.rawBody = buffer; } }));
 
 // Root Landing Page (for Meta Business Verification & Web Crawlers)
 app.get('/', (req, res) => {
@@ -113,6 +113,7 @@ app.get(['/health', '/healthz'], (req, res) => {
 });
 
 // Mount Routes
+app.use('/api/app', require('./routes/syncRoutes'));
 app.use('/api/app', appRoutes);
 app.use('/webhooks', webhookRoutes);
 app.use('/api/cron', cronRoutes);
@@ -123,7 +124,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error', message: err.message });
 });
 
-app.listen(PORT, () => {
+if (require.main === module) app.listen(PORT, () => {
   console.log(`🚀 SusuLedger Backend running on port ${PORT}`);
   console.log(`👉 Webhook endpoint: /webhooks/whatsapp`);
   console.log(`👉 App REST API: /api/app/*`);

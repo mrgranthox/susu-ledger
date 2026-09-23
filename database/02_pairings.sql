@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS bot_pairings (
+    code VARCHAR(32) PRIMARY KEY,
+    phone VARCHAR(20) NOT NULL,
+    group_id UUID NOT NULL REFERENCES groups(id),
+    status VARCHAR(32) NOT NULL DEFAULT 'PENDING_WHATSAPP_CONFIRMATION',
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP + INTERVAL '15 minutes',
+    paired_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_bot_pairings_expiry ON bot_pairings(expires_at);
+
+CREATE TABLE IF NOT EXISTS webhook_events (
+    id TEXT PRIMARY KEY,
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS payment_receipts (
+    payment_id UUID PRIMARY KEY REFERENCES payments(id) ON DELETE CASCADE,
+    state VARCHAR(16) NOT NULL DEFAULT 'pending',
+    attempts INT NOT NULL DEFAULT 0,
+    accepted_at TIMESTAMPTZ
+);

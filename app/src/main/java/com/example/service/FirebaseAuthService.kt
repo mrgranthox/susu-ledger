@@ -13,7 +13,6 @@ class FirebaseAuthService {
 
   companion object {
     private const val TAG = "FirebaseAuthService"
-    const val DEMO_VERIFICATION_CODE = "123456"
   }
 
   private val auth: FirebaseAuth? by lazy {
@@ -34,7 +33,7 @@ class FirebaseAuthService {
   ) {
     val firebaseAuth = auth
     if (firebaseAuth == null) {
-      onVerificationFailed("Firebase notice: Client application certificate not yet whitelisted in Firebase Console. Local verification code (123456) has been activated for your phone.")
+      onVerificationFailed("SMS authentication is unavailable. Check Firebase configuration and try again.")
       return
     }
 
@@ -52,18 +51,7 @@ class FirebaseAuthService {
             val rawMsg = e.localizedMessage ?: e.message ?: "SMS OTP delivery failure."
             Log.e(TAG, "Firebase SMS failed: $rawMsg", e)
 
-            val isBlocked = rawMsg.contains("blocked", ignoreCase = true) ||
-                rawMsg.contains("internal error", ignoreCase = true) ||
-                rawMsg.contains("appcheck", ignoreCase = true) ||
-                rawMsg.contains("quota", ignoreCase = true)
-
-            val friendlyMsg = if (isBlocked) {
-              "Firebase notice: Client application certificate not yet whitelisted in Firebase Console. Local verification code (123456) has been activated for your phone."
-            } else {
-              rawMsg
-            }
-
-            onVerificationFailed(friendlyMsg)
+            onVerificationFailed(rawMsg)
           }
 
           override fun onCodeSent(
@@ -78,7 +66,7 @@ class FirebaseAuthService {
       PhoneAuthProvider.verifyPhoneNumber(options)
     } catch (e: Exception) {
       Log.e(TAG, "Exception initializing PhoneAuthProvider: ${e.message}", e)
-      onVerificationFailed("Device verification mode active. Please use code 123456.")
+      onVerificationFailed("Unable to request SMS verification. Please try again.")
     }
   }
 
@@ -88,7 +76,7 @@ class FirebaseAuthService {
   ) {
     val firebaseAuth = auth
     if (firebaseAuth == null) {
-      onResult(true, null)
+      onResult(false, "SMS authentication is unavailable.")
       return
     }
 
@@ -104,7 +92,7 @@ class FirebaseAuthService {
         }
     } catch (e: Exception) {
       Log.w(TAG, "signInWithPhoneCredential exception: ${e.message}")
-      onResult(true, null)
+      onResult(false, "Unable to verify your phone. Please try again.")
     }
   }
 
@@ -113,15 +101,8 @@ class FirebaseAuthService {
     code: String,
     onResult: (Boolean, String?) -> Unit
   ) {
-    if (code.length < 6) {
+    if (code.length != 6 || !code.all(Char::isDigit) || verificationId.isBlank()) {
       onResult(false, "Please enter a valid 6-digit verification code.")
-      return
-    }
-
-    // Resilient fallback: If using fallback verification ID or standard test verification code
-    if (verificationId.startsWith("fallback_") || code == DEMO_VERIFICATION_CODE) {
-      Log.i(TAG, "Resilient verification mode accepted code $code.")
-      onResult(true, null)
       return
     }
 
@@ -129,12 +110,7 @@ class FirebaseAuthService {
       val credential = PhoneAuthProvider.getCredential(verificationId, code)
       signInWithPhoneCredential(credential, onResult)
     } catch (e: Exception) {
-      Log.w(TAG, "Error generating credential: ${e.message}, checking fallback.")
-      if (code == DEMO_VERIFICATION_CODE) {
-        onResult(true, null)
-      } else {
-        onResult(false, "Error verifying SMS code: ${e.localizedMessage}")
-      }
+      onResult(false, "Unable to verify this code. Request another SMS and try again.")
     }
   }
 

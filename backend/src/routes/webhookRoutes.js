@@ -1,81 +1,60 @@
-const express = require('express');
-const router = express.Router();
+const router = require('express').Router();
+const db = require('../config/database');
+const { signatureMiddleware } = require('../middleware/webhookSignature');
 const { handleIncomingWhatsAppMessage } = require('../services/stateMachine');
 const { handlePaystackWebhook } = require('../services/paystackService');
-require('dotenv').config();
 
-const VERIFY_TOKENS = [
-  process.env.META_WEBHOOK_VERIFY_TOKEN,
-  process.env.WHATSAPP_VERIFY_TOKEN,
-  'susu_webhook_token_2026',
-  'susu_webhook_secret_token_2026'
-].filter(Boolean);
-
-// 1. Meta WhatsApp Webhook Verification (GET)
 router.get('/whatsapp', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
-
-  if (mode && token) {
-    if (mode === 'subscribe' && VERIFY_TOKENS.includes(token)) {
-      console.log('[Meta Webhook] Verified successfully with token:', token);
-      return res.status(200).send(challenge);
-    } else {
-      console.warn('[Meta Webhook] Token mismatch. Received:', token, 'Expected one of:', VERIFY_TOKENS);
-      return res.sendStatus(403);
-    }
-  } else {
-    return res.sendStatus(400);
+  const token = process.env.META_WEBHOOK_VERIFY_TOKEN;
+  if (token && req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === token) {
+    return res.status(200).send(req.query['hub.challenge']);
   }
+  res.sendStatus(403);
 });
 
-// 2. Meta WhatsApp Incoming Events (POST)
-router.post('/whatsapp', async (req, res) => {
-  const body = req.body;
-
-  if (body.object) {
-    if (
-      body.entry &&
-      body.entry[0].changes &&
-      body.entry[0].changes[0].value.messages &&
-      body.entry[0].changes[0].value.messages[0]
-    ) {
-      const message = body.entry[0].changes[0].value.messages[0];
-      const fromPhone = message.from;
-      let textBody = '';
-      let buttonPayload = null;
-
-      if (message.type === 'text') {
-        textBody = message.text.body;
-      } else if (message.type === 'interactive') {
-        if (message.interactive.type === 'button_reply') {
-          buttonPayload = message.interactive.button_reply.id;
-          textBody = message.interactive.button_reply.title;
+router.post('/whatsapp', signatureMiddleware({secretName:'META_APP_SECRET',header:'x-hub-signature-256',algorithm:'sha256',prefix:'sha256='}), async (req,res) => {
+  if (req.body.object !== 'whatsapp_business_account') return res.sendStatus(400);
+  try {
+    for (const entry of req.body.entry || []) {
+      for (const change of entry.changes || []) {
+        for (const message of change.value?.messages || []) {
+          if (!message.id || !message.from) continue;
+          const client = await db.pool.connect();
+          try {
+            await client.query('BEGIN');
+            // Serialize a sender's state machine across Cloud Run instances.
+            await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[message.from]);
+            const duplicate=await client.query('SELECT id FROM webhook_events WHERE id=$1',[message.id]);
+            if (!duplicate.rowCount) {
+              const reply=message.interactive?.button_reply || message.interactive?.list_reply;
+              if (message.type === 'text' || reply) {
+                await handleIncomingWhatsAppMessage(message.from,message.text?.body || reply?.title || '',reply?.id);
+              }
+              await client.query('INSERT INTO webhook_events(id) VALUES($1)',[message.id]);
+            }
+            await client.query('COMMIT');
+          } catch(error) {
+            await client.query('ROLLBACK');
+            throw error;
+          } finally { client.release(); }
         }
-      }
-
-      try {
-        await handleIncomingWhatsAppMessage(fromPhone, textBody, buttonPayload);
-      } catch (err) {
-        console.error('[Webhook Processing Error]', err);
       }
     }
     res.status(200).send('EVENT_RECEIVED');
-  } else {
-    res.sendStatus(404);
+  } catch(error) {
+    console.error('[WhatsApp webhook failed]',error.code || error.message);
+    res.sendStatus(503);
   }
 });
 
-// 3. Paystack MoMo Webhook (POST)
-router.post('/paystack', async (req, res) => {
+router.post('/paystack', signatureMiddleware({secretName:'PAYSTACK_SECRET_KEY',header:'x-paystack-signature',algorithm:'sha512'}), async(req,res) => {
   try {
     await handlePaystackWebhook(req.body);
     res.sendStatus(200);
-  } catch (err) {
-    console.error('[Paystack Webhook Error]', err);
-    res.sendStatus(500);
+  } catch(error) {
+    console.error('[Paystack webhook failed]',error.code || error.message);
+    res.sendStatus(503);
   }
 });
 
-module.exports = router;
+module.exports=router;

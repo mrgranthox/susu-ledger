@@ -1,5 +1,6 @@
 package com.example.data.remote
 
+import com.example.BuildConfig
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import okhttp3.OkHttpClient
@@ -11,7 +12,9 @@ import java.util.concurrent.TimeUnit
 object SusuApiClient {
 
   // Default Cloud Run backend URL deployed in Google Cloud
-  const val DEFAULT_BASE_URL = "https://susu-backend-965064733382.africa-south1.run.app/"
+  val DEFAULT_BASE_URL: String =
+    BuildConfig.API_URL.takeIf { it.isNotBlank() }
+      ?: "https://susu-backend-965064733382.africa-south1.run.app/"
 
   private var customBaseUrl: String = DEFAULT_BASE_URL
 
@@ -29,6 +32,19 @@ object SusuApiClient {
 
   private val okHttpClient: OkHttpClient by lazy {
     OkHttpClient.Builder()
+      .addInterceptor { chain ->
+        val user = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+        val request = chain.request().newBuilder()
+        if (user != null) {
+          val token = try {
+            com.google.android.gms.tasks.Tasks.await(user.getIdToken(false), 15, TimeUnit.SECONDS).token
+          } catch (e: Exception) {
+            throw java.io.IOException("Unable to refresh sign-in. Please sign in again.", e)
+          }
+          if (token != null) request.header("Authorization", "Bearer $token")
+        }
+        chain.proceed(request.build())
+      }
       .addInterceptor(loggingInterceptor)
       .connectTimeout(15, TimeUnit.SECONDS)
       .readTimeout(15, TimeUnit.SECONDS)

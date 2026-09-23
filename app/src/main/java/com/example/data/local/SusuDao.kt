@@ -87,6 +87,9 @@ interface SusuDao {
   @Query("SELECT * FROM members WHERE group_id = :groupId AND state = 'active'")
   suspend fun getActiveMembersForGroup(groupId: String): List<MemberEntity>
 
+  @Query("SELECT * FROM members WHERE group_id = :groupId")
+  suspend fun getMembersForGroupOnce(groupId: String): List<MemberEntity>
+
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertMember(member: MemberEntity)
 
@@ -108,6 +111,9 @@ interface SusuDao {
 
   @Query("SELECT * FROM cycles WHERE group_id = :groupId ORDER BY number DESC")
   fun getAllCycles(groupId: String): Flow<List<CycleEntity>>
+
+  @Query("SELECT * FROM cycles WHERE group_id = :groupId ORDER BY number ASC")
+  suspend fun getAllCyclesOnce(groupId: String): List<CycleEntity>
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertCycle(cycle: CycleEntity)
@@ -159,8 +165,8 @@ interface SusuDao {
   @Query("SELECT * FROM payments WHERE is_synced = 0 ORDER BY confirmed_at ASC")
   suspend fun getUnsyncedPaymentsOnce(): List<PaymentEntity>
 
-  @Query("UPDATE payments SET is_synced = 1 WHERE is_synced = 0")
-  suspend fun markAllPaymentsSynced()
+  @Query("UPDATE payments SET is_synced = 1 WHERE id IN (:ids)")
+  suspend fun markPaymentsSynced(ids: List<String>)
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertPayment(payment: PaymentEntity)
@@ -212,6 +218,12 @@ interface SusuDao {
   @Query("SELECT * FROM message_log ORDER BY timestamp ASC")
   fun getAllMessages(): Flow<List<MessageLogEntity>>
 
+  @Query("SELECT * FROM message_log WHERE meta_status = 'queued' AND sender_name = 'SusuBot Receipt'")
+  suspend fun getQueuedReceipts(): List<MessageLogEntity>
+
+  @Query("UPDATE message_log SET meta_status = :status WHERE id = :id")
+  suspend fun updateMessageStatus(id: String, status: String)
+
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertMessage(message: MessageLogEntity)
 
@@ -224,6 +236,9 @@ interface SusuDao {
 
   @Query("DELETE FROM ledger_entries")
   suspend fun deleteAllLedgerEntries()
+
+  @Query("DELETE FROM ledger_corrections")
+  suspend fun deleteAllLedgerCorrections()
 
   @Query("DELETE FROM claims")
   suspend fun deleteAllClaims()
@@ -254,12 +269,13 @@ interface SusuDao {
 
   @Transaction
   suspend fun purgeAllAccountData() {
-    deleteAllPayments()
     deleteAllLedgerEntries()
+    deleteAllLedgerCorrections()
     deleteAllClaims()
+    deleteAllPayments()
     deleteAllCycles()
-    deleteAllMembers()
     deleteAllAccounts()
+    deleteAllMembers()
     deleteAllGroups()
     deleteAllUsers()
     deleteAllIdentities()

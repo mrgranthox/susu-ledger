@@ -8,6 +8,17 @@ package com.example.util
  */
 object GhanaPhoneUtils {
 
+  fun toE164(input: String): String {
+    val digits = input.filter(Char::isDigit)
+    val normalized = when {
+      digits.length == 9 -> "233$digits"
+      digits.length == 10 && digits.startsWith("0") -> "233${digits.drop(1)}"
+      else -> digits
+    }
+    require(normalized.matches(Regex("233[235]\\d{8}"))) { "Enter a valid Ghana phone number" }
+    return "+$normalized"
+  }
+
   private val MTN_PREFIXES = listOf("24", "25", "53", "54", "55", "59")
   private val TELECEL_PREFIXES = listOf("20", "50")
   private val AT_PREFIXES = listOf("27", "57", "26")

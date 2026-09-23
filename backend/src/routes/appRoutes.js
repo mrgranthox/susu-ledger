@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
 const cacheService = require('../config/redis');
+const { requirePhoneAuth } = require('../middleware/auth');
+const { cloudId, phone: normalizePhone } = require('../services/syncService');
+const { registerPairing } = require('../services/pairingService');
 const { generatePaymentHash, verifyLedgerChain } = require('../services/cryptoEngine');
 const { initializeMoMoSubscription } = require('../services/paystackService');
 const { generateCycleCsv, generateAnnualLedgerSummary } = require('../services/exportService');
@@ -13,18 +16,18 @@ router.get('/status', async (req, res) => {
   let dbLatency = 0;
   try {
     const t0 = Date.now();
-    await db.query('SELECT 1');
+    await db.query('SELECT 1 FROM bot_pairings LIMIT 0');
     dbLatency = Date.now() - t0;
   } catch (dbErr) {
-    dbStatus = `error: ${dbErr.message}`;
+    dbStatus = 'unavailable';
   }
 
   const redisPing = await cacheService.ping();
   const metaConfigured = Boolean(process.env.META_WHATSAPP_PHONE_NUMBER_ID || process.env.WHATSAPP_PHONE_ID);
   const tokenConfigured = Boolean(process.env.META_WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_TOKEN);
 
-  res.json({
-    status: 'ONLINE',
+  res.status(dbStatus === 'healthy' ? 200 : 503).json({
+    status: dbStatus === 'healthy' ? 'ONLINE' : 'DEGRADED',
     service: 'SusuLedger Cloud Run Core Engine',
     timestamp: new Date().toISOString(),
     database: {
@@ -37,20 +40,56 @@ router.get('/status', async (req, res) => {
       ping: redisPing
     },
     whatsappBot: {
-      provider: 'Meta WhatsApp Cloud API v20.0',
+      provider: 'Meta WhatsApp Cloud API v23.0',
       phoneIdConfigured: metaConfigured,
       tokenConfigured: tokenConfigured,
+      signatureConfigured: Boolean(process.env.META_APP_SECRET),
       webhookPath: '/webhooks/whatsapp',
       autoPairingSupported: true
     },
     cryptoEngine: {
       algorithm: 'SHA-256 Hash Chaining',
-      doubleEntryBalanced: true
+      doubleEntryBalanced: null
     }
   });
 });
 
+router.use(requirePhoneAuth);
+
+router.use(async (req, res, next) => {
+  try {
+    let groupId = req.path.match(/^\/groups\/([^/]+)/)?.[1] || req.body.groupId;
+    const cycleId = req.path.match(/^\/cycles\/([^/]+)/)?.[1];
+    if (cycleId) {
+      groupId = (await db.query('SELECT group_id FROM cycles WHERE id=$1', [cloudId(cycleId)])).rows[0]?.group_id;
+      if (!groupId) return res.status(404).json({ error: 'Cycle not found' });
+    }
+    if (groupId) {
+      const owner = await db.query('SELECT g.id FROM groups g JOIN identities i ON i.id=g.treasurer_id WHERE g.id=$1 AND i.phone=$2', [cloudId(groupId),normalizePhone(req.auth.phone_number)]);
+      if (!owner.rows.length) return res.status(403).json({ error: 'Group access denied' });
+    }
+    next();
+  } catch (error) { next(error); }
+});
+
+router.get('/pair-bot/:code', async (req, res, next) => {
+  try {
+    const result = await db.query('SELECT status,expires_at FROM bot_pairings WHERE code=$1 AND phone=$2', [req.params.code,normalizePhone(req.auth.phone_number)]);
+    if (!result.rows.length) return res.status(404).json({ error: 'Pairing not found' });
+    const pair = result.rows[0];
+    res.json({ status: pair.status === 'PAIRED' ? 'PAIRED' : new Date(pair.expires_at) <= new Date() ? 'EXPIRED' : pair.status });
+  } catch (error) { next(error); }
+});
+
 // 0b. Register/Refresh Dynamic Bot Pairing Code
+router.post('/groups/:id/claims/:claimId/reject', async (req,res) => {
+  try {
+    res.json(await require('../services/claimService').rejectClaim(req.params.id,req.params.claimId,req.auth.phone_number,req.body.reason));
+  } catch (error) {
+    res.status(error.status || 400).json({error:error.message});
+  }
+});
+
 router.post('/pair-bot', async (req, res) => {
   const { code, phone, groupId } = req.body;
   if (!code) {
@@ -66,9 +105,11 @@ router.post('/pair-bot', async (req, res) => {
     status: 'PENDING_WHATSAPP_CONFIRMATION'
   };
 
-  // 15-minute TTL (900 seconds)
-  await cacheService.set(`pair:${cleanCode}`, pairData, 900);
-  console.log(`[Bot Pairing] Registered dynamic code: ${cleanCode} for ${pairData.phone} (15m TTL)`);
+  try {
+    await registerPairing(cleanCode, groupId, req.auth.phone_number);
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.code === '23505' ? 'Generate a new pairing code' : error.message });
+  }
 
   res.json({
     success: true,
@@ -86,7 +127,12 @@ router.post('/whatsapp/send-message', async (req, res) => {
   }
 
   try {
-    const result = await sendWhatsAppTextMessage(phone, message, identityId);
+    const recipient = await db.query(`SELECT recipient.id FROM identities recipient
+      JOIN members m ON m.identity_id=recipient.id JOIN groups g ON g.id=m.group_id
+      JOIN identities owner ON owner.id=g.treasurer_id WHERE recipient.phone=$1 AND owner.phone=$2 LIMIT 1`,
+      [normalizePhone(phone),normalizePhone(req.auth.phone_number)]);
+    if (!recipient.rowCount) return res.status(403).json({ error: 'Recipient is not in your group' });
+    const result = await sendWhatsAppTextMessage(phone, message, recipient.rows[0].id);
     res.json({
       success: true,
       phone,
@@ -226,7 +272,18 @@ router.get('/groups/:id/cycles/active', async (req, res) => {
     );
 
     const claimsRes = await db.query(
-      `SELECT c.*, m.alias as member_name, i.phone as member_phone 
+      `SELECT
+         c.id,
+         c.cycle_id,
+         c.member_id,
+         c.claimed_amount::float AS claimed_amount,
+         c.evidence_momo_id,
+         c.state,
+         c.created_at,
+         c.resolved_by,
+         c.resolved_at,
+         m.alias as member_name,
+         i.phone as member_phone
        FROM claims c 
        JOIN members m ON c.member_id = m.id 
        JOIN identities i ON m.identity_id = i.id 
@@ -245,82 +302,7 @@ router.get('/groups/:id/cycles/active', async (req, res) => {
 
 // 4. Record Confirmed Payment (with SHA-256 Hash Chain)
 router.post('/payments/confirm', async (req, res) => {
-  const { cycleId, memberId, amountPaid, method, confirmedBy, idempotencyKey, source } = req.body;
-  try {
-    // 1. Fetch the last payment hash in the ledger
-    const lastPaymentRes = await db.query(
-      'SELECT current_hash FROM payments ORDER BY confirmed_at DESC LIMIT 1'
-    );
-    const prevHash = lastPaymentRes.rows[0]?.current_hash || '0000000000000000000000000000000000000000000000000000000000000000';
-
-    // 2. Compute the current SHA-256 block hash
-    const paymentId = require('crypto').randomUUID();
-    const finalIdempotency = idempotencyKey || `idemp-${Date.now()}`;
-    const currentHash = generatePaymentHash({
-      id: paymentId,
-      cycleId,      memberId,
-      amountPaid,
-      idempotencyKey: finalIdempotency,
-      prevHash,
-    });
-
-    // 3. Insert Payment
-    const paymentRes = await db.query(
-      `INSERT INTO payments (
-         id, cycle_id, member_id, amount_paid, method, status, confirmed_by,
-         idempotency_key, source, prev_hash, current_hash
-       ) 
-       VALUES ($1, $2, $3, $4, $5, 'confirmed', $6, $7, $8, $9, $10) 
-       RETURNING *`,
-      [
-        paymentId,
-        cycleId,
-        memberId,
-        amountPaid,
-        method || 'CASH',
-        confirmedBy,
-        finalIdempotency,
-        source || 'app',
-        prevHash,
-        currentHash,
-      ]
-    );
-
-    // 4. Update any pending claim from this member for this cycle
-    await db.query(
-      `UPDATE claims 
-       SET state = 'confirmed', resolved_by = $1, resolved_at = CURRENT_TIMESTAMP 
-       WHERE cycle_id = $2 AND member_id = $3 AND state = 'pending'`,
-      [confirmedBy, cycleId, memberId]
-    );
-
-    // 5. Send Payment Confirmation Receipt via WhatsApp to Member
-    try {
-      const memberInfo = await db.query(
-        `SELECT m.alias, i.phone FROM members m JOIN identities i ON m.identity_id = i.id WHERE m.id = $1`,
-        [memberId]
-      );
-      if (memberInfo.rows[0]) {
-        const { alias, phone } = memberInfo.rows[0];
-        const receiptText = 
-          `SusuLedger Official Receipt 🧾\n\n` +
-          `Dear ${alias},\n` +
-          `Your payment of *GHS ${amountPaid}* has been confirmed!\n\n` +
-          `• Method: ${method || 'CASH'}\n` +
-          `• Transaction ID: ${paymentId.slice(0, 8)}\n` +
-          `• SHA-256 Ledger Hash: ${currentHash.slice(0, 16)}...\n\n` +
-          `Thank you for contributing on time! 🟢`;
-        await sendWhatsAppTextMessage(phone, receiptText);
-      }
-    } catch (rcptErr) {
-      console.error('[Receipt Error]', rcptErr.message);
-    }
-
-    res.json(paymentRes.rows[0]);
-  } catch (err) {
-    console.error('[Payment Error]', err);
-    res.status(500).json({ error: err.message });
-  }
+  return res.status(409).json({ error: 'Use authenticated group sync to record balanced payments' });
 });
 
 // 5. Verify Cryptographic Ledger Chain Integrity

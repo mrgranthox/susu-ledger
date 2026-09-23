@@ -118,7 +118,7 @@ data class ContactItem(val name: String, val phone: String)
 @Composable
 fun OnboardingFlowScreen(
   pairingCode: String = "",
-  onCompleteOnboarding: (groupName: String, amount: Double, treasurerPhone: String, treasurerName: String, members: List<SetupMemberItem>, treasurerPin: String) -> Unit,
+  onCompleteOnboarding: (groupName: String, amount: Double, treasurerPhone: String, treasurerName: String, members: List<SetupMemberItem>, treasurerPin: String, schedule: String) -> Unit,
   onSwitchToLogin: () -> Unit
 ) {
   var currentStep by remember { mutableStateOf(1) } // 1..7
@@ -154,7 +154,7 @@ fun OnboardingFlowScreen(
         verticalAlignment = Alignment.CenterVertically
       ) {
         Text(
-          text = "Step $currentStep of 7",
+          text = "Step $currentStep of 6",
           style = MaterialTheme.typography.labelSmall.copy(color = TextSecondary, fontWeight = FontWeight.SemiBold)
         )
         TextButton(
@@ -219,17 +219,11 @@ fun OnboardingFlowScreen(
         6 -> Step6SecurityPin(
           treasurerPin = treasurerPin,
           onTreasurerPinChange = { treasurerPin = it },
-          onContinue = { currentStep = 7 }
-        )
-        7 -> Step7ConnectBot(
-          pairingCode = pairingCode,
-          treasurerName = if (treasurerName.isNotBlank()) treasurerName else "Treasurer",
-          groupName = if (groupName.isNotBlank()) groupName else "Susu Group",
-          onFinish = {
-            val amtNum = contributionAmount.replace("GHS", "").trim().toDoubleOrNull() ?: 50.0
-            val resolvedTreasurerName = if (treasurerName.isNotBlank()) treasurerName.trim() else "Ama Mensah"
-            val resolvedGroupName = if (groupName.isNotBlank()) groupName.trim() else "Nima Market Susu"
-            onCompleteOnboarding(resolvedGroupName, amtNum, treasurerPhone, resolvedTreasurerName, memberList, treasurerPin)
+          onContinue = {
+            val amount = contributionAmount.replace("GHS", "").trim().toDoubleOrNull()
+            if (amount != null && amount > 0) {
+              onCompleteOnboarding(groupName.trim(), amount, GhanaPhoneUtils.toE164(treasurerPhone), treasurerName.trim(), memberList, treasurerPin, collectionFrequency.lowercase())
+            }
           }
         )
       }
@@ -573,9 +567,6 @@ private fun Step2PhoneOtp(
               if (it.length <= 6 && it.all { ch -> ch.isDigit() }) {
                 otpCode = it
                 smsErrorMsg = null
-                if (it.length == 6) {
-                  onVerified()
-                }
               }
             },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -596,16 +587,6 @@ private fun Step2PhoneOtp(
         ) {
           TextButton(
             onClick = {
-              otpCode = "123456"
-              smsErrorMsg = null
-              smsStatusMsg = "Dev test code filled (123456)."
-            }
-          ) {
-            Text("Dev Code (123456)", fontSize = 12.sp, color = ForestGreenPrimary, fontWeight = FontWeight.Bold)
-          }
-
-          TextButton(
-            onClick = {
               if (activity != null) {
                 isSendingSms = true
                 smsErrorMsg = null
@@ -618,14 +599,19 @@ private fun Step2PhoneOtp(
                     verificationId = vId
                     smsStatusMsg = "Verification code re-sent via SMS."
                   },
-                  onVerificationCompleted = { onVerified() },
+                  onVerificationCompleted = { credential ->
+                    firebaseAuthService.signInWithPhoneCredential(credential) { success, error ->
+                      isSendingSms = false
+                      if (success) onVerified() else smsErrorMsg = error
+                    }
+                  },
                   onVerificationFailed = { err ->
                     isSendingSms = false
                     smsErrorMsg = "SMS Resend: $err"
                   }
                 )
               } else {
-                smsStatusMsg = "Verification code re-sent."
+                smsErrorMsg = "Unable to request SMS from this screen. Please reopen the app."
               }
             }
           ) {
@@ -635,6 +621,7 @@ private fun Step2PhoneOtp(
           TextButton(
             onClick = {
               isCodeSent = false
+              verificationId = null
               otpCode = ""
               smsStatusMsg = null
               smsErrorMsg = null
@@ -684,28 +671,27 @@ private fun Step2PhoneOtp(
                   verificationId = vId
                   smsStatusMsg = "SMS OTP dispatched to $fullPhone."
                 },
-                onVerificationCompleted = {
-                  isSendingSms = false
-                  isCodeSent = true
-                  onVerified()
+                onVerificationCompleted = { credential ->
+                  firebaseAuthService.signInWithPhoneCredential(credential) { success, error ->
+                    isSendingSms = false
+                    if (success) onVerified() else smsErrorMsg = error
+                  }
                 },
                 onVerificationFailed = { err ->
                   isSendingSms = false
-                  isCodeSent = true
+                  isCodeSent = false
                   smsErrorMsg = "Firebase SMS Notice: $err"
-                  smsStatusMsg = "Dev fallback active: Enter test code 123456 to continue."
+                  smsStatusMsg = null
                 }
               )
             } else {
               isSendingSms = false
-              isCodeSent = true
-              smsStatusMsg = "Verification code ready (Dev test code: 123456)."
+              isCodeSent = false
+              smsErrorMsg = "Unable to request SMS from this screen. Please reopen the app."
             }
           } else {
             val code = otpCode.trim()
-            if (code == "123456") {
-              onVerified()
-            } else if (code.length == 6) {
+            if (code.length == 6) {
               if (verificationId != null) {
                 isVerifyingCode = true
                 firebaseAuthService.verifySmsCode(verificationId!!, code) { success, err ->
@@ -713,11 +699,11 @@ private fun Step2PhoneOtp(
                   if (success) {
                     onVerified()
                   } else {
-                    smsErrorMsg = err ?: "Invalid code. Use 123456 for dev testing."
+                    smsErrorMsg = err ?: "Invalid or expired code. Request another SMS."
                   }
                 }
               } else {
-                onVerified()
+                smsErrorMsg = "Request an SMS code before verifying."
               }
             } else {
               smsErrorMsg = "Please enter the 6-digit code."
@@ -1866,179 +1852,3 @@ private fun Step6SecurityPin(
 // -----------------------------------------------------------------------------
 // STEP 7 — CONNECT THE WHATSAPP BOT (CLEAR 1-TAP MAKOLA-FRIENDLY WORKFLOW)
 // -----------------------------------------------------------------------------
-@Composable
-private fun Step7ConnectBot(
-  pairingCode: String,
-  treasurerName: String,
-  groupName: String,
-  onFinish: () -> Unit
-) {
-  val context = LocalContext.current
-  var isConnected by remember { mutableStateOf(false) }
-
-  Column(
-    modifier = Modifier
-      .fillMaxSize()
-      .background(PureWhite)
-      .verticalScroll(rememberScrollState()),
-    horizontalAlignment = Alignment.CenterHorizontally,
-    verticalArrangement = Arrangement.SpaceBetween
-  ) {
-    Column(
-      modifier = Modifier
-        .fillMaxWidth()
-        .padding(top = 10.dp),
-      horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-      Icon(
-        imageVector = Icons.AutoMirrored.Filled.Chat,
-        contentDescription = null,
-        tint = LineIconGreen,
-        modifier = Modifier.size(40.dp)
-      )
-
-      Spacer(modifier = Modifier.height(10.dp))
-
-      Text(
-        text = "Connect WhatsApp in 1 Tap",
-        style = MaterialTheme.typography.headlineMedium.copy(
-          color = TextPrimary,
-          textAlign = TextAlign.Center,
-          fontWeight = FontWeight.Bold
-        )
-      )
-
-      Spacer(modifier = Modifier.height(8.dp))
-
-      Text(
-        text = "Tap the green button below. Your WhatsApp will open to SusuLedger's verified number. Simply tap Send!",
-        style = MaterialTheme.typography.bodyMedium.copy(
-          color = TextSecondary,
-          textAlign = TextAlign.Center
-        ),
-        modifier = Modifier.padding(horizontal = 8.dp)
-      )
-
-      Spacer(modifier = Modifier.height(18.dp))
-
-      // Verified WhatsApp Bot Card with official number
-      Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = PureWhite),
-        border = BorderStroke(1.dp, BorderGrey),
-        shape = RoundedCornerShape(8.dp)
-      ) {
-        Column(
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-          horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-          Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("SusuLedger Verified WhatsApp Bot Gateway", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = TextPrimary)
-            Spacer(modifier = Modifier.width(6.dp))
-            Icon(Icons.Default.CheckCircle, contentDescription = "Verified", tint = ForestGreenPrimary, modifier = Modifier.size(16.dp))
-          }
-
-          Spacer(modifier = Modifier.height(12.dp))
-
-          Surface(
-            color = Color(0xFFF8FAFC),
-            shape = RoundedCornerShape(6.dp),
-            border = BorderStroke(1.dp, BorderGrey)
-          ) {
-            Column(
-              modifier = Modifier.padding(12.dp),
-              horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-              Text("Your 1-Tap Pairing Code", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.SemiBold)
-              Text(
-                text = pairingCode,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                letterSpacing = 3.sp,
-                color = ForestGreenPrimary
-              )
-              Text("Expires in 15 minutes", fontSize = 10.sp, color = TextSecondary)
-            }
-          }
-        }
-      }
-
-      Spacer(modifier = Modifier.height(16.dp))
-
-      // HOW THIS WORKS CARD (Non-technical / Market Friendly Explanation)
-      Surface(
-        color = ForestGreenLightFill,
-        shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(1.dp, ForestGreenPrimary.copy(alpha = 0.3f))
-      ) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          Text("How it works (Made simple for everyone):", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ForestGreenPrimary)
-          Text("1. Tapping below opens your WhatsApp directly to SusuLedger.", fontSize = 11.sp, color = TextPrimary)
-          Text("2. The pairing code is pre-typed. Just press Send in WhatsApp.", fontSize = 11.sp, color = TextPrimary)
-          Text("3. The bot immediately sends a welcome notice to all members: 'Hello! $treasurerName has added you to $groupName...'", fontSize = 11.sp, color = TextPrimary)
-        }
-      }
-
-      Spacer(modifier = Modifier.height(20.dp))
-
-      // Open WhatsApp & Send Code Button (Launches WhatsApp Intent)
-      Button(
-        onClick = {
-          isConnected = true
-          try {
-            val url = "https://wa.me/233240007878?text=PAIR:$pairingCode"
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-            context.startActivity(intent)
-          } catch (_: Exception) {
-            // Handled safely in emulator/sandbox
-          }
-        },
-        modifier = Modifier
-          .fillMaxWidth()
-          .height(52.dp)
-          .testTag("onboarding_open_whatsapp_btn"),
-        shape = RoundedCornerShape(8.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-      ) {
-        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, tint = PureWhite, modifier = Modifier.size(20.dp))
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-          text = "Open WhatsApp & Send Code",
-          style = MaterialTheme.typography.labelLarge.copy(color = PureWhite, fontWeight = FontWeight.Bold)
-        )
-      }
-
-      Spacer(modifier = Modifier.height(16.dp))
-
-      // Status indicator
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        if (!isConnected) {
-          CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = ForestGreenPrimary)
-          Spacer(modifier = Modifier.width(8.dp))
-          Text("Listening for incoming WhatsApp pairing...", style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary))
-        } else {
-          Icon(Icons.Default.CheckCircle, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp))
-          Spacer(modifier = Modifier.width(6.dp))
-          Text("Group Connected & Members Welcomed!", style = MaterialTheme.typography.bodyMedium.copy(color = ForestGreenPrimary, fontWeight = FontWeight.Bold))
-        }
-      }
-    }
-
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp)) {
-      Button(
-        onClick = onFinish,
-        modifier = Modifier
-          .fillMaxWidth()
-          .height(52.dp)
-          .testTag("onboarding_finish_btn"),
-        shape = RoundedCornerShape(8.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-      ) {
-        Text("Go to Dashboard", style = MaterialTheme.typography.labelLarge.copy(color = PureWhite, fontWeight = FontWeight.Bold))
-      }
-    }
-  }
-}

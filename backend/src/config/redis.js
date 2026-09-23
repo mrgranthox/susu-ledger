@@ -3,7 +3,22 @@ require('dotenv').config();
 let client = null;
 let isRedisConnected = false;
 
-const redisUrl = process.env.REDIS_URL || process.env.REDIS_TLS_URL;
+function resolveRedisUrl() {
+  if (process.env.REDIS_URL || process.env.REDIS_TLS_URL) {
+    return process.env.REDIS_URL || process.env.REDIS_TLS_URL;
+  }
+
+  if (!process.env.REDIS_HOST) {
+    return null;
+  }
+
+  const protocol = process.env.REDIS_TLS === 'true' ? 'rediss' : 'redis';
+  const auth = process.env.REDIS_PASSWORD ? `:${encodeURIComponent(process.env.REDIS_PASSWORD)}@` : '';
+  const port = process.env.REDIS_PORT || '6379';
+  return `${protocol}://${auth}${process.env.REDIS_HOST}:${port}`;
+}
+
+const redisUrl = resolveRedisUrl();
 
 if (redisUrl) {
   try {

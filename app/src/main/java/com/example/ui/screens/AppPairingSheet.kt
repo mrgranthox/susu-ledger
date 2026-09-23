@@ -253,6 +253,7 @@ fun AppPairingSheet(
         onClick = {
           openWhatsAppChat(context, pairingCode)
         },
+        enabled = secondsRemaining > 0,
         modifier = Modifier
           .fillMaxWidth()
           .height(50.dp)
@@ -288,12 +289,12 @@ fun AppPairingSheet(
 private fun openWhatsAppChat(context: Context, pairingCode: String) {
   val message = "PAIR:$pairingCode"
   val intent = Intent(Intent.ACTION_VIEW).apply {
-    data = Uri.parse("https://api.whatsapp.com/send?text=${Uri.encode(message)}")
+    data = Uri.parse("https://wa.me/233545908371?text=${Uri.encode(message)}")
   }
   try {
     context.startActivity(intent)
   } catch (e: Exception) {
     // Fallback if WhatsApp client is not directly launchable in simulator
-    Toast.makeText(context, "Pairing message: '$message' copied!", Toast.LENGTH_LONG).show()
+    Toast.makeText(context, "Unable to open WhatsApp. Send $message to +233 54 590 8371.", Toast.LENGTH_LONG).show()
   }
 }

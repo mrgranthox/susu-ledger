@@ -48,7 +48,7 @@ data class DashboardStats(
 class SusuViewModel(application: Application) : AndroidViewModel(application) {
 
   private val database = SusuDatabase.getDatabase(application, viewModelScope)
-  private val repository = SusuRepository(database.susuDao())
+  private val repository = SusuRepository(database)
 
   // Enterprise Session & Persistence
   val sessionManager = SessionManager(application)
@@ -95,11 +95,12 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   fun generateNewPairingCode() {
     val newCode = CryptoUtils.generatePairingCode()
     _pairingCode.value = newCode
-    _pairingSecondsRemaining.value = 900 // 15 mins fresh
+    _pairingSecondsRemaining.value = 0
 
     viewModelScope.launch {
       try {
-        val phoneNum = _userPhone.value.ifBlank { "+233241234567" }
+        repository.syncAllOfflineDataToCloud()
+        val phoneNum = _userPhone.value
         val grpId = _selectedGroupId.value.ifBlank { null }
         val response = SusuApiClient.getApiService().registerPairingCode(
           PairBotRequest(
@@ -109,12 +110,25 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
           )
         )
         if (response.isSuccessful) {
+          _pairingSecondsRemaining.value = 900
           _toastMessage.value = "New pairing code $newCode registered"
+          _isBotConnected.value = false
+          while (_pairingCode.value == newCode && _pairingSecondsRemaining.value > 0) {
+            delay(5000)
+            val status = SusuApiClient.getApiService().getPairingStatus(newCode)
+            if (status.isSuccessful && status.body()?.status == "PAIRED") {
+              _isBotConnected.value = true
+              _toastMessage.value = "WhatsApp pairing confirmed"
+              break
+            }
+          }
         } else {
-          _toastMessage.value = "Pairing code $newCode generated"
+          _pairingSecondsRemaining.value = 0
+          _toastMessage.value = "Pairing registration failed (HTTP ${response.code()}). Retry after syncing."
         }
       } catch (e: Exception) {
-        _toastMessage.value = "Pairing code $newCode generated"
+        _pairingSecondsRemaining.value = 0
+        _toastMessage.value = "Pairing registration failed: ${e.localizedMessage}"
       }
     }
   }
@@ -126,13 +140,12 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         val response = SusuApiClient.getApiService().getSystemStatus()
         if (response.isSuccessful && response.body() != null) {
           _cloudStatus.value = response.body()
-          _isBotConnected.value = true
-          _toastMessage.value = "Cloud Run Engine & PostgreSQL Status: ONLINE"
+          _toastMessage.value = if (response.body()?.database?.status == "healthy") "Cloud database is online" else "Cloud database is unavailable"
         } else {
-          _toastMessage.value = "Cloud status checked"
+          _toastMessage.value = "Cloud check failed (HTTP ${response.code()})"
         }
       } catch (e: Exception) {
-        _toastMessage.value = "Cloud diagnostics connected"
+        _toastMessage.value = "Cloud check failed: ${e.localizedMessage}"
       } finally {
         _isCheckingCloud.value = false
       }
@@ -230,17 +243,19 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
   fun syncWithCloud() {
+    com.example.service.CloudSyncWorker.enqueue(getApplication())
+    if (_isSyncing.value) return
     viewModelScope.launch {
       _isSyncing.value = true
-      delay(700)
-      val count = repository.syncAllOfflineDataToCloud()
-      val report = repository.verifyLedgerIntegrity(payments.value, ledgerEntries.value)
-      _verificationReport.value = report
-      _isSyncing.value = false
-      _toastMessage.value = if (count > 0) {
-        "Backed up $count offline record(s) to Cloud Database • Verified"
-      } else {
-        "Cloud Ledger up to date • Verified"
+      try {
+        val count = repository.syncAllOfflineDataToCloud()
+        val claimCount = repository.syncPendingClaimsFromCloud(_selectedGroupId.value)
+        _verificationReport.value = repository.verifyLedgerIntegrity(payments.value, ledgerEntries.value)
+        _toastMessage.value = "Cloud sync complete: $count payments, $claimCount pending claims"
+      } catch (e: Exception) {
+        _toastMessage.value = "Sync failed: ${e.localizedMessage}"
+      } finally {
+        _isSyncing.value = false
       }
     }
   }
@@ -374,7 +389,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         _pairingSecondsRemaining.value = if (_pairingSecondsRemaining.value > 1) {
           _pairingSecondsRemaining.value - 1
         } else {
-          900 // reset to 15m
+          0
         }
       }
     }
@@ -426,14 +441,15 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     treasurerPhone: String,
     treasurerName: String,
     members: List<Pair<String, String>>,
-    treasurerPin: String = ""
+    treasurerPin: String = "",
+    schedule: String = "weekly"
   ) {
     viewModelScope.launch {
       try {
         val newGroup = repository.createNewGroupWithMembers(
           groupName = groupName,
           amount = amount,
-          schedule = "weekly",
+          schedule = schedule,
           treasurerPhone = treasurerPhone,
           treasurerName = treasurerName,
           members = members,
@@ -459,6 +475,8 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         )
 
         _toastMessage.value = "Group '${newGroup.name}' created successfully!"
+        syncWithCloud()
+        showPairingSheet(true)
       } catch (e: Exception) {
         _toastMessage.value = "Error creating group: ${e.localizedMessage}"
       }
@@ -732,6 +750,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         dismissPaymentSheet()
         _toastMessage.value = "Payment confirmed and recorded in ledger"
         runIntegrityCheck()
+        syncWithCloud()
       } catch (e: Exception) {
         _toastMessage.value = "Error recording payment: ${e.localizedMessage}"
       }
@@ -740,8 +759,12 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
 
   fun rejectClaim(claim: ClaimEntity) {
     viewModelScope.launch {
-      repository.rejectClaim(claim)
-      _toastMessage.value = "Claim from ${claim.memberName} rejected"
+      try {
+        repository.rejectClaim(claim)
+        _toastMessage.value = "Claim from ${claim.memberName} rejected"
+      } catch (e: Exception) {
+        _toastMessage.value = "Rejection failed: ${e.localizedMessage}"
+      }
     }
   }
 
@@ -752,6 +775,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
       repository.startNewCycle(groupId, cycle)
       _showNewWeekDialog.value = false
       _toastMessage.value = "Week ${cycle.number + 1} opened successfully!"
+      syncWithCloud()
     }
   }
 
@@ -769,14 +793,20 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
 
   fun showPairingSheet(show: Boolean) {
     _showPairingSheet.value = show
+    if (show) generateNewPairingCode()
   }
 
   fun addNewMember(alias: String, phone: String) {
     val groupId = _selectedGroupId.value
     viewModelScope.launch {
-      repository.addMember(groupId, alias, phone)
-      _showAddMemberDialog.value = false
-      _toastMessage.value = "Added member $alias"
+      try {
+        repository.addMember(groupId, alias, phone)
+        _showAddMemberDialog.value = false
+        _toastMessage.value = "Added member $alias"
+        syncWithCloud()
+      } catch (e: Exception) {
+        _toastMessage.value = "Unable to add member: ${e.localizedMessage}"
+      }
     }
   }
 
@@ -797,43 +827,45 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
           SendWhatsAppMessageRequest(phone = phone, message = messageText)
         )
         if (response.isSuccessful) {
-          repository.logOutboundMessage(phone, messageText, "delivered")
+          repository.logOutboundMessage(phone, messageText, "sent")
           _toastMessage.value = "WhatsApp message dispatched to $phone"
           onResult(true, null)
         } else {
-          repository.logOutboundMessage(phone, messageText, "delivered")
-          _toastMessage.value = "Dispatched via WhatsApp Cloud API"
-          onResult(true, null)
+          repository.logOutboundMessage(phone, messageText, "failed")
+          _toastMessage.value = "WhatsApp send failed (HTTP ${response.code()})"
+          onResult(false, "WhatsApp provider did not accept the message")
         }
       } catch (e: Exception) {
-        repository.logOutboundMessage(phone, messageText, "delivered")
-        _toastMessage.value = "Dispatched to WhatsApp: $phone"
-        onResult(true, null)
+        repository.logOutboundMessage(phone, messageText, "failed")
+        _toastMessage.value = "WhatsApp send failed: ${e.localizedMessage}"
+        onResult(false, e.localizedMessage)
       }
     }
   }
 
   fun sendWeeklyCollectionReminder() {
-    val groupId = _selectedGroupId.value
     viewModelScope.launch {
-      val count = repository.sendWeeklyCollectionReminder(groupId)
-      _toastMessage.value = "Dispatched $count collection reminders via WhatsApp"
+      try {
+        repository.syncAllOfflineDataToCloud()
+        val response = SusuApiClient.getApiService().triggerFridayReminder()
+        check(response.isSuccessful) { "Reminder dispatch failed (HTTP ${response.code()})" }
+        _toastMessage.value = "WhatsApp accepted ${response.body()?.sentCount ?: 0} reminders"
+      } catch (e: Exception) { _toastMessage.value = e.localizedMessage }
     }
   }
 
   fun sendTargetedUnpaidNudges() {
-    val groupId = _selectedGroupId.value
-    viewModelScope.launch {
-      val count = repository.sendTargetedUnpaidNudges(groupId)
-      _toastMessage.value = if (count > 0) "Sent $count targeted nudges to unpaid members" else "All members in active cycle have contributed!"
-    }
+    sendWeeklyCollectionReminder()
   }
 
   fun sendSundaySummaryDigest() {
-    val groupId = _selectedGroupId.value
     viewModelScope.launch {
-      val count = repository.sendSundaySummaryDigest(groupId)
-      _toastMessage.value = "Broadcasted Sunday Summary Digest to $count members"
+      try {
+        repository.syncAllOfflineDataToCloud()
+        val response = SusuApiClient.getApiService().triggerSundayDigest()
+        check(response.isSuccessful) { "Summary dispatch failed (HTTP ${response.code()})" }
+        _toastMessage.value = "WhatsApp accepted ${response.body()?.digestCount ?: 0} summaries"
+      } catch (e: Exception) { _toastMessage.value = e.localizedMessage }
     }
   }
 

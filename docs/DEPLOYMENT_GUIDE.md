@@ -1,11 +1,25 @@
 # SusuLedger Enterprise Production Deployment Guide (GCP Cloud Run, Cloud SQL, Cloud Memorystore & Firebase)
 
 ### Prerequisites & Provisioning Checklist
-- Google Cloud Platform (GCP) Account with project `susuledger-prod`
+- Google Cloud Platform (GCP) Account with project `susu-ledger-c3daa`
 - `gcloud` CLI authenticated with Project Owner / Security Admin roles
-- Firebase Project linked to `susuledger-prod`
+- Firebase Project linked to `susu-ledger-c3daa`
 - Meta Business Manager WhatsApp Cloud API account
 - Paystack Ghana Enterprise Developer Account
+
+Production coordinates used by the Android app and Firebase config:
+
+```bash
+export GCP_PROJECT_ID=susu-ledger-c3daa
+export GCP_REGION=africa-south1
+export CLOUD_RUN_SERVICE_NAME=susu-backend
+export CLOUDSQL_INSTANCE=susu-ledger-c3daa:africa-south1:susu-db-instance
+```
+
+The infrastructure creation commands below are examples for a new environment,
+not instructions to recreate existing production resources. Redis is optional;
+pairing codes and webhook deduplication use PostgreSQL. See
+`docs/PRODUCTION_ACCEPTANCE.md` for verified deployment status and remaining gates.
 
 ---
 
@@ -25,7 +39,7 @@ gcloud services enable \
 
 # 2. Create Serverless VPC Access Connector for Private DB/Redis Routing
 gcloud compute networks vpc-access connectors create susu-vpc-connector \
-    --region=europe-west2 \
+    --region=africa-south1 \
     --range=10.8.0.0/28
 ```
 
@@ -35,27 +49,28 @@ gcloud compute networks vpc-access connectors create susu-vpc-connector \
 
 ```bash
 # 1. Create Cloud SQL Instance (PostgreSQL 16) with High Availability
-gcloud sql instances create susu-postgres-prod \
+gcloud sql instances create susu-db-instance \
     --database-version=POSTGRES_16 \
     --cpu=4 --memory=16GB \
-    --region=europe-west2 \
+    --region=africa-south1 \
     --availability-type=REGIONAL \
     --storage-type=SSD --storage-size=100GB \
     --enable-point-in-time-recovery \
     --root-password="REPLACE_WITH_STRONG_PASSWORD"
 
 # 2. Create Database and User
-gcloud sql databases create susu_db --instance=susu-postgres-prod
-gcloud sql users create susu_user --instance=susu-postgres-prod --password="USER_STRONG_PASSWORD"
+gcloud sql databases create susu_ledger_db --instance=susu-db-instance
+gcloud sql users create postgres --instance=susu-db-instance --password="USER_STRONG_PASSWORD"
 
-# 3. Apply Ledger Schema and Cryptographic Triggers
-gcloud sql connect susu-postgres-prod --user=susu_user --database=susu_db < database/01_schema.sql
-gcloud sql connect susu-postgres-prod --user=susu_user --database=susu_db < database/02_triggers.sql
+# 3. Apply migrations through an authenticated Cloud SQL connection.
+# Supply DB_HOST, DB_PORT, DB_NAME, DB_USER and DB_PASSWORD securely.
+# This initializes a new database or adds missing tables to an existing one.
+node backend/scripts/migrate.js
 
 # 4. Provision Cloud Memorystore for Redis v7.0 (Caching Layer)
 gcloud redis instances create susu-redis-prod \
-    --size=2 --region=europe-west2 \
-    --zone=europe-west2-a \
+    --size=2 --region=africa-south1 \
+    --zone=africa-south1-a \
     --redis-version=redis_7_0 \
     --tier=STANDARD \
     --connect-mode=PRIVATE_SERVICE_ACCESS
@@ -67,7 +82,7 @@ gcloud redis instances create susu-redis-prod \
 
 ```bash
 # 1. Initialize Firebase Storage Bucket for Receipts & Audit CSV Exports
-gsutil mb -p susuledger-prod -c STANDARD -l europe-west2 gs://susu-ledger-proofs-prod/
+gsutil mb -p susu-ledger-c3daa -c STANDARD -l africa-south1 gs://susu-ledger-proofs-prod/
 
 # 2. Configure Storage CORS for Mobile App Direct Uploads
 cat <<EOF > cors.json
@@ -88,60 +103,55 @@ gsutil cors set cors.json gs://susu-ledger-proofs-prod/
 ### Step 4: Secret Manager & Environment Variable Provisioning
 
 ```bash
+# Enable Secret Manager before deploying. Do not store long-lived API tokens
+# as raw Cloud Run environment variable values.
+gcloud services enable secretmanager.googleapis.com --project susu-ledger-c3daa
+
 # Create Secrets in GCP Secret Manager
-gcloud secrets create DATABASE_URL --data-file=- <<< "postgresql://susu_user:USER_STRONG_PASSWORD@/susu_db?host=/cloudsql/susuledger-prod:europe-west2:susu-postgres-prod"
+gcloud secrets create DB_PASSWORD --data-file=- <<< "USER_STRONG_PASSWORD"
 gcloud secrets create REDIS_HOST --data-file=- <<< "10.120.4.15"
 gcloud secrets create PAYSTACK_SECRET_KEY --data-file=- <<< "sk_live_1234567890abcdef"
 gcloud secrets create PAYSTACK_PUBLIC_KEY --data-file=- <<< "pk_live_1234567890abcdef"
-gcloud secrets create META_WHATSAPP_TOKEN --data-file=- <<< "EAA..."
-gcloud secrets create META_APP_SECRET --data-file=- <<< "app_secret_123456"
+gcloud secrets create META_WHATSAPP_ACCESS_TOKEN --data-file=- <<< "EAA..."
+gcloud secrets create SECRET_SALT --data-file=- <<< "replace_with_256bit_random_value"
 ```
 
 ---
 
-### Step 5: Deploy Cloud Run Backend Container
+### Step 5: Check And Deploy Cloud Run Backend Container
 
 ```bash
-# 1. Build and push container to Google Artifact Registry
-gcloud builds submit --tag europe-west2-docker.pkg.dev/susuledger-prod/susu-repo/susu-backend:v1 ./backend
+# Run once before deploy to catch project, API, secret, and endpoint drift.
+./backend/scripts/launch-check.sh
 
-# 2. Deploy to Cloud Run with VPC Connector & Secret Manager Bindings
-gcloud run deploy susu-backend \
-    --image europe-west2-docker.pkg.dev/susuledger-prod/susu-repo/susu-backend:v1 \
-    --platform managed \
-    --region europe-west2 \
-    --vpc-connector susu-vpc-connector \
-    --allow-unauthenticated \
-    --min-instances 2 \
-    --max-instances 50 \
-    --cpu 2 --memory 4Gi \
-    --set-secrets="DATABASE_URL=DATABASE_URL:latest" \
-    --set-secrets="REDIS_HOST=REDIS_HOST:latest" \
-    --set-secrets="PAYSTACK_SECRET_KEY=PAYSTACK_SECRET_KEY:latest" \
-    --set-secrets="PAYSTACK_PUBLIC_KEY=PAYSTACK_PUBLIC_KEY:latest" \
-    --set-secrets="META_WHATSAPP_ACCESS_TOKEN=META_WHATSAPP_TOKEN:latest" \
-    --set-secrets="META_APP_SECRET=META_APP_SECRET:latest" \
-    --set-env-vars "NODE_ENV=production,REDIS_PORT=6379,META_WEBHOOK_VERIFY_TOKEN=susu_webhook_secret_token_2026" \
-    --add-cloudsql-instances susuledger-prod:europe-west2:susu-postgres-prod
+# Build and deploy the backend image to Cloud Run.
+./backend/deploy.sh
+
+# Run again after deploy; all checks should pass before launch.
+./backend/scripts/launch-check.sh
 ```
+
+The deploy script uses structured Cloud SQL variables (`DB_HOST`, `DB_NAME`,
+`DB_USER`, `DB_PASSWORD`) instead of a single `DATABASE_URL`, so special
+characters in the password cannot break URL parsing.
 
 ---
 
-### Step 6: Configure Automated Cloud Scheduler Jobs
+### Step 6: Messaging Acceptance Gates
 
-```bash
-# 1. Friday 08:00 GMT Collection Reminder
-gcloud scheduler jobs create http susu-friday-reminder \
-    --schedule="0 8 * * 5" \
-    --time-zone="Africa/Accra" \
-    --uri="https://susu-backend-xxx.a.run.app/api/cron/reminders/weekly" \
-    --http-method=GET
+The reminder and summary routes require the treasurer's Firebase phone ID token
+and only operate on that treasurer's groups. Anonymous Cloud Scheduler requests
+are rejected. Service-account OIDC authentication, scheduled-job deduplication,
+and automated Scheduler provisioning are not implemented; do not configure
+unauthenticated jobs or treat manual app triggers as scheduled delivery.
 
-# 2. Sunday 18:00 GMT Summary Digest
-gcloud scheduler jobs create http susu-sunday-summary \
-    --schedule="0 18 * * 0" \
-    --time-zone="Africa/Accra" \
-    --uri="https://susu-backend-xxx.a.run.app/api/cron/summaries/weekly" \
-    --http-method=GET
-```
+Meta must approve `susu_friday_reminder`, `susu_payment_receipt`, and
+`susu_sunday_summary` before template delivery can pass acceptance. Failed
+receipts remain queued for retry. Provider acceptance is not proof of delivery
+to the handset.
 
+For SMS acceptance, enable Firebase phone sign-in, allow Ghana in the SMS region
+policy, and register SHA-1 and SHA-256 fingerprints for the actual signing key.
+Repeat these steps for the release/Play signing key; debug-key verification
+does not validate a release build. Test SMS receipt, group creation, cloud sync,
+and the phone-bound WhatsApp pairing code on a real device.

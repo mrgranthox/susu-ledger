@@ -283,7 +283,7 @@ fun WhatsAppBotScreen(
                       TextButton(
                         onClick = {
                           val intent = Intent(Intent.ACTION_VIEW).apply {
-                            data = Uri.parse("https://api.whatsapp.com/send?text=${Uri.encode("PAIR:$pairingCode")}")
+                            data = Uri.parse("https://wa.me/233545908371?text=${Uri.encode("PAIR:$pairingCode")}")
                           }
                           try {
                             context.startActivity(intent)

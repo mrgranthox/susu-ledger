@@ -292,7 +292,7 @@ class MainActivity : FragmentActivity() {
                   // App-First Clean Slate Onboarding Flow
                   OnboardingFlowScreen(
                     pairingCode = pairingCode,
-                    onCompleteOnboarding = { groupName, amount, treasurerPhone, treasurerName, initialMembers, treasurerPin ->
+                    onCompleteOnboarding = { groupName, amount, treasurerPhone, treasurerName, initialMembers, treasurerPin, schedule ->
                       val memberPairs = initialMembers.map { it.name to it.phone }
                       viewModel.completeOnboarding(
                         groupName = groupName,
@@ -300,7 +300,8 @@ class MainActivity : FragmentActivity() {
                         treasurerPhone = treasurerPhone,
                         treasurerName = treasurerName,
                         members = memberPairs,
-                        treasurerPin = treasurerPin
+                        treasurerPin = treasurerPin,
+                        schedule = schedule
                       )
                       viewModel.unlockApp()
                     },

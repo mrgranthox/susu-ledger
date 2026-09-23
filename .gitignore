@@ -24,4 +24,4 @@ backend/.env.*
 debug.keystore
 *.key
 *.pem
-
+node_modules/

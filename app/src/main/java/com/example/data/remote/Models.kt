@@ -1,7 +1,29 @@
 package com.example.data.remote
 
+import com.example.data.local.GroupEntity
+import com.example.data.local.IdentityEntity
+import com.example.data.local.MemberEntity
+import com.example.data.local.CycleEntity
+import com.example.data.local.PaymentEntity
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+
+data class SyncGroupRequest(
+  val group: GroupEntity,
+  val treasurer: IdentityEntity,
+  val members: List<MemberEntity>,
+  val cycles: List<CycleEntity>,
+  val payments: List<PaymentEntity>,
+  val receiptPaymentIds: List<String> = emptyList()
+)
+
+data class SyncGroupResponse(
+  val groupId: String,
+  val acknowledgedPaymentIds: List<String>,
+  val acceptedReceiptIds: List<String> = emptyList(),
+  val pendingReceiptCount: Int = 0
+)
+data class PairingStatusResponse(val status: String)
 
 @JsonClass(generateAdapter = true)
 data class CloudSystemStatusResponse(
@@ -40,6 +62,32 @@ data class WhatsAppBotStatusInfo(
 data class CryptoEngineStatusInfo(
   @Json(name = "algorithm") val algorithm: String? = null,
   @Json(name = "doubleEntryBalanced") val doubleEntryBalanced: Boolean? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class ActiveCycleCloudResponse(
+  @Json(name = "cycle") val cycle: CloudCycleInfo? = null,
+  @Json(name = "claims") val claims: List<CloudClaimInfo> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class CloudCycleInfo(
+  @Json(name = "id") val id: String? = null,
+  @Json(name = "group_id") val groupId: String? = null,
+  @Json(name = "number") val number: Int? = null,
+  @Json(name = "state") val state: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class CloudClaimInfo(
+  @Json(name = "id") val id: String,
+  @Json(name = "cycle_id") val cycleId: String,
+  @Json(name = "member_id") val memberId: String,
+  @Json(name = "member_name") val memberName: String? = null,
+  @Json(name = "member_phone") val memberPhone: String? = null,
+  @Json(name = "claimed_amount") val claimedAmount: Double,
+  @Json(name = "evidence_momo_id") val evidenceMoMoId: String? = null,
+  @Json(name = "state") val state: String = "pending"
 )
 
 @JsonClass(generateAdapter = true)

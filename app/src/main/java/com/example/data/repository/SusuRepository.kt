@@ -13,7 +13,10 @@ import com.example.data.local.MemberWithIdentity
 import com.example.data.local.MessageLogEntity
 import com.example.data.local.PaymentEntity
 import com.example.data.local.SusuDao
+import com.example.data.local.SusuDatabase
+import androidx.room.withTransaction
 import com.example.data.local.UserEntity
+import com.example.data.remote.SusuApiClient
 import com.example.util.CryptoUtils
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
@@ -29,7 +32,8 @@ data class VerificationReport(
   val latestHash: String
 )
 
-class SusuRepository(private val dao: SusuDao) {
+class SusuRepository(private val database: SusuDatabase) {
+  private val dao = database.susuDao()
 
   val allGroups: Flow<List<GroupEntity>> = dao.getAllGroups()
   val allPayments: Flow<List<PaymentEntity>> = dao.getAllPayments()
@@ -38,11 +42,86 @@ class SusuRepository(private val dao: SusuDao) {
   val unsyncedPaymentsCount: Flow<Int> = dao.getUnsyncedPaymentsCount()
 
   suspend fun syncAllOfflineDataToCloud(): Int {
-    val count = dao.getUnsyncedPaymentsCountOnce()
-    if (count > 0) {
-      dao.markAllPaymentsSynced()
+    var uploaded = 0
+    // Resend all payments to recover records falsely marked synced by older versions.
+    // The server checks immutable payment IDs and idempotency keys on every retry.
+    val allPayments = dao.getAllPaymentsOnce()
+    for (group in dao.getAllGroupsOnce()) {
+      val treasurer = dao.getIdentityById(group.treasurerId)
+        ?: error("Group treasurer is missing")
+      val cycles = dao.getAllCyclesOnce(group.id).map { cycle ->
+        if (cycle.dueDate.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) cycle
+        else cycle.copy(dueDate = nextDueDate(group.schedule))
+      }
+      val cycleIds = cycles.map { it.id }.toSet()
+      val payments = allPayments.filter { it.cycleId in cycleIds }
+      val receiptIds = dao.getQueuedReceipts().map { it.id.removePrefix("receipt-") }.filter { id -> payments.any { it.id == id } }
+      val response = SusuApiClient.getApiService().syncGroup(
+        com.example.data.remote.SyncGroupRequest(group, treasurer, dao.getMembersForGroupOnce(group.id), cycles, payments, receiptIds)
+      )
+      if (!response.isSuccessful) error("Cloud sync failed (HTTP ${response.code()}). Records remain on this device.")
+      val acknowledged = response.body()?.acknowledgedPaymentIds ?: error("Cloud sync returned no acknowledgement")
+      check(acknowledged.toSet() == payments.map { it.id }.toSet()) { "Cloud sync acknowledgement is incomplete" }
+      dao.markPaymentsSynced(acknowledged)
+      response.body()?.acceptedReceiptIds.orEmpty().forEach { dao.updateMessageStatus("receipt-$it", "sent") }
+      uploaded += payments.count { !it.isSynced }
     }
-    return count
+    return uploaded
+  }
+
+  private fun cloudId(id: String): String = runCatching { UUID.fromString(id).toString() }
+    .getOrElse { UUID.nameUUIDFromBytes(id.toByteArray(Charsets.UTF_8)).toString() }
+
+  private fun nextDueDate(schedule: String = "weekly"): String {
+    val calendar = java.util.Calendar.getInstance()
+    if (schedule == "monthly") calendar.add(java.util.Calendar.MONTH, 1)
+    else do { calendar.add(java.util.Calendar.DAY_OF_MONTH, 1) } while (calendar.get(java.util.Calendar.DAY_OF_WEEK) != java.util.Calendar.FRIDAY)
+    return java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(calendar.time)
+  }
+
+  suspend fun syncPendingClaimsFromCloud(groupId: String): Int {
+    return try {
+      val response = SusuApiClient.getApiService().getActiveCycleSnapshot(cloudId(groupId))
+      if (!response.isSuccessful) error("Claim sync failed (HTTP ${response.code()})")
+
+      val claims = response.body()?.claims.orEmpty()
+      if (claims.isEmpty()) return 0
+
+      val localCycle = dao.getActiveCycleOnce(groupId)
+      val activeMembers = dao.getActiveMembersForGroup(groupId)
+      var inserted = 0
+
+      claims.filter { it.state == "pending" }.forEach { cloudClaim ->
+        val localCycleId = dao.getAllCyclesOnce(groupId).firstOrNull { cloudId(it.id) == cloudClaim.cycleId }?.id
+          ?: return@forEach
+
+        val memberById = activeMembers.firstOrNull { cloudId(it.id) == cloudClaim.memberId }
+        val cloudPhoneDigits = cloudClaim.memberPhone.orEmpty().filter(Char::isDigit)
+        val memberByPhone = activeMembers.firstOrNull { member ->
+          val localDigits = member.phone.filter(Char::isDigit)
+          cloudPhoneDigits.length >= 9 && (localDigits == cloudPhoneDigits || localDigits.takeLast(9) == cloudPhoneDigits.takeLast(9))
+        }
+        val localMember = memberById ?: memberByPhone ?: return@forEach
+
+        dao.insertClaim(
+          ClaimEntity(
+            id = cloudClaim.id,
+            cycleId = localCycleId,
+            memberId = localMember.id,
+            memberName = cloudClaim.memberName ?: localMember.alias,
+            memberPhone = cloudClaim.memberPhone ?: localMember.phone,
+            claimedAmount = cloudClaim.claimedAmount,
+            evidenceMoMoId = cloudClaim.evidenceMoMoId,
+            state = cloudClaim.state
+          )
+        )
+        inserted += 1
+      }
+
+      inserted
+    } catch (error: Exception) {
+      throw error
+    }
   }
 
   fun getMembers(groupId: String): Flow<List<MemberEntity>> = dao.getMembersForGroup(groupId)
@@ -68,15 +147,20 @@ class SusuRepository(private val dao: SusuDao) {
     confirmedBy: String = "identity-treasurer-01",
     sendWhatsAppReceipt: Boolean = true,
     associatedClaimId: String? = null
-  ): PaymentEntity {
+  ): PaymentEntity = database.withTransaction {
     val member = dao.getMemberById(memberId)
       ?: throw IllegalArgumentException("Member not found: $memberId")
+    val paymentCycle = dao.getCycleById(cycleId) ?: error("Cycle not found")
+    require(member.groupId == groupId && paymentCycle.groupId == groupId) { "Payment records must belong to the same group" }
+    require(paymentCycle.state == "open") { "The cycle is closed" }
+    require(amount.isFinite() && amount > 0 && kotlin.math.abs(amount * 100 - kotlin.math.round(amount * 100)) < 0.0001) { "Enter a positive amount with at most two decimals" }
 
     // Fetch previous hash for SHA-256 chain
     val lastPayment = dao.getLastPayment()
     val prevHash = lastPayment?.currentHash ?: CryptoUtils.getGenesisHash()
 
-    val paymentId = "pay-${UUID.randomUUID().toString().take(8)}"
+    require(amount.isFinite() && amount > 0) { "Enter a positive payment amount" }
+    val paymentId = UUID.randomUUID().toString()
     val idempotencyKey = "idemp-${UUID.randomUUID().toString()}"
 
     val currentHash = CryptoUtils.generatePaymentHash(
@@ -207,16 +291,17 @@ class SusuRepository(private val dao: SusuDao) {
       }
 
       val receiptMessage = MessageLogEntity(
+        id = "receipt-$paymentId",
         phone = member.phone,
         senderName = "SusuBot Receipt",
         direction = "OUT",
         body = receiptBody,
-        metaStatus = "delivered"
+        metaStatus = "queued"
       )
       dao.insertMessage(receiptMessage)
     }
 
-    return payment
+    payment
   }
 
   suspend fun pauseOrResumeGroup(groupId: String, newState: String, reason: String, officerId: String): Boolean {
@@ -358,9 +443,13 @@ class SusuRepository(private val dao: SusuDao) {
   }
 
   suspend fun rejectClaim(claim: ClaimEntity, reason: String = "Unverified payment claim") {
+    val cycle = dao.getCycleById(claim.cycleId) ?: error("Claim cycle not found")
+    val group = dao.getGroupById(cycle.groupId) ?: error("Claim group not found")
+    val response = SusuApiClient.getApiService().rejectClaim(cloudId(group.id), cloudId(claim.id), mapOf("reason" to reason))
+    check(response.isSuccessful) { "Cloud claim rejection failed (HTTP ${response.code()})" }
     val updated = claim.copy(
       state = "rejected",
-      resolvedBy = "identity-treasurer-01",
+      resolvedBy = group.treasurerId,
       resolvedAt = System.currentTimeMillis()
     )
     dao.updateClaim(updated)
@@ -376,13 +465,13 @@ class SusuRepository(private val dao: SusuDao) {
     dao.insertMessage(notice)
   }
 
-  suspend fun startNewCycle(groupId: String, currentCycle: CycleEntity) {
+  suspend fun startNewCycle(groupId: String, currentCycle: CycleEntity) = database.withTransaction {
     // Close current cycle
     dao.updateCycle(
       currentCycle.copy(
         state = "closed",
         closedAt = System.currentTimeMillis(),
-        closedBy = "identity-treasurer-01"
+        closedBy = dao.getGroupById(groupId)?.treasurerId
       )
     )
 
@@ -392,7 +481,7 @@ class SusuRepository(private val dao: SusuDao) {
       groupId = groupId,
       number = nextNumber,
       amountDue = currentCycle.amountDue,
-      dueDate = "Friday",
+      dueDate = nextDueDate(dao.getGroupById(groupId)?.schedule ?: "weekly"),
       state = "open"
     )
     dao.insertCycle(nextCycle)
@@ -417,9 +506,10 @@ class SusuRepository(private val dao: SusuDao) {
       .joinToString("")
       .ifEmpty { "M" }
 
-    val cleanPhone = if (phone.isNotBlank()) phone else "+233 ${UUID.randomUUID().toString().take(9)}"
+    val cleanPhone = com.example.util.GhanaPhoneUtils.toE164(phone)
+    dao.getMembersForGroupOnce(groupId).firstOrNull { it.phone == cleanPhone }?.let { return it }
     val existingIdentity = dao.getIdentityByPhone(cleanPhone)
-    val identityId = existingIdentity?.id ?: "identity-${UUID.randomUUID().toString().take(8)}"
+    val identityId = existingIdentity?.id ?: UUID.randomUUID().toString()
     
     if (existingIdentity == null) {
       val identity = IdentityEntity(
@@ -990,10 +1080,11 @@ class SusuRepository(private val dao: SusuDao) {
     treasurerName: String,
     members: List<Pair<String, String>>,
     treasurerPin: String = ""
-  ): GroupEntity {
-    val cleanTreasurerPhone = if (treasurerPhone.isNotBlank()) treasurerPhone else "+233 24 000 0000"
+  ): GroupEntity = database.withTransaction {
+    val cleanTreasurerPhone = com.example.util.GhanaPhoneUtils.toE164(treasurerPhone)
+    require(amount.isFinite() && amount > 0 && groupName.isNotBlank()) { "Group name and positive contribution amount are required" }
     val existingTreasurer = dao.getIdentityByPhone(cleanTreasurerPhone)
-    val treasurerIdentityId = existingTreasurer?.id ?: "identity-treasurer-${UUID.randomUUID().toString().take(6)}"
+    val treasurerIdentityId = existingTreasurer?.id ?: UUID.randomUUID().toString()
 
     if (existingTreasurer == null) {
       val treasurerIdentity = IdentityEntity(
@@ -1004,7 +1095,8 @@ class SusuRepository(private val dao: SusuDao) {
       dao.insertIdentity(treasurerIdentity)
     }
 
-    val cleanPin = if (treasurerPin.isNotBlank()) treasurerPin else "0000"
+    require(treasurerPin.length == 4 && treasurerPin.all(Char::isDigit)) { "Choose a 4-digit PIN" }
+    val cleanPin = treasurerPin
     val user = UserEntity(
       id = treasurerIdentityId,
       pinHash = CryptoUtils.hashPin(cleanPin, treasurerIdentityId),
@@ -1012,7 +1104,7 @@ class SusuRepository(private val dao: SusuDao) {
     )
     dao.insertUser(user)
 
-    val groupId = "group-${UUID.randomUUID().toString().take(8)}"
+    val groupId = UUID.randomUUID().toString()
     val group = GroupEntity(
       id = groupId,
       name = groupName.ifBlank { "Susu Group" },
@@ -1039,7 +1131,7 @@ class SusuRepository(private val dao: SusuDao) {
       groupId = groupId,
       number = 1,
       amountDue = amount,
-      dueDate = "Friday",
+      dueDate = nextDueDate(schedule),
       state = "open"
     )
     dao.insertCycle(cycle)
@@ -1051,7 +1143,7 @@ class SusuRepository(private val dao: SusuDao) {
       }
     }
 
-    return group
+    group
   }
 
   suspend fun logOutboundMessage(phone: String, body: String, metaStatus: String = "delivered") {

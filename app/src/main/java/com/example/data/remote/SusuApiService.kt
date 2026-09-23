@@ -8,11 +8,29 @@ import retrofit2.http.Path
 
 interface SusuApiService {
 
+  @POST("api/app/sync")
+  suspend fun syncGroup(@Body request: SyncGroupRequest): Response<SyncGroupResponse>
+
   @GET("api/app/status")
   suspend fun getSystemStatus(): Response<CloudSystemStatusResponse>
 
+  @GET("api/app/groups/{id}/cycles/active")
+  suspend fun getActiveCycleSnapshot(
+    @Path("id") groupId: String
+  ): Response<ActiveCycleCloudResponse?>
+
   @POST("api/app/pair-bot")
   suspend fun registerPairingCode(@Body request: PairBotRequest): Response<PairBotResponse>
+
+  @GET("api/app/pair-bot/{code}")
+  suspend fun getPairingStatus(@Path("code") code: String): Response<PairingStatusResponse>
+
+  @POST("api/app/groups/{groupId}/claims/{claimId}/reject")
+  suspend fun rejectClaim(
+    @Path("groupId") groupId: String,
+    @Path("claimId") claimId: String,
+    @Body request: Map<String, String>
+  ): Response<Map<String, String>>
 
   @POST("api/app/whatsapp/send-message")
   suspend fun sendWhatsAppMessage(@Body request: SendWhatsAppMessageRequest): Response<SendWhatsAppMessageResponse>
