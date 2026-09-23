@@ -16,6 +16,16 @@ async function request(url,options={}) {
 }
 
 (async()=>{
+  const firebase=require('../../app/google-services.json');
+  check(firebase.project_info.project_id===project,'Android Firebase project matches deployment');
+  const client=firebase.client.find(item=>item.client_info?.android_client_info?.package_name==='com.aistudio.susuledger.wtxm');
+  const apiKey=client?.api_key?.[0]?.current_key;
+  if(!apiKey) throw new Error('Android Firebase API key is missing');
+  // A sideloaded APK needs the browser fallback as well as native API access.
+  const authConfig=await request(`https://identitytoolkit.googleapis.com/v1/projects?key=${encodeURIComponent(apiKey)}`,{
+    headers:{Referer:`https://${project}.firebaseapp.com/`}
+  });
+  check(authConfig.ok,'Firebase project configuration allows the reCAPTCHA browser path (not an SMS delivery test)');
   const service=JSON.parse(gcloud(['run','services','describe',serviceName,`--region=${region}`,'--format=json']));
   const candidate=process.argv.includes('--candidate');
   const target=candidate ? service.status.traffic.find(item=>item.tag==='candidate') : service.status.traffic.find(item=>item.percent===100);

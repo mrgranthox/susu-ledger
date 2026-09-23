@@ -15,6 +15,12 @@ Last checked: 2026-09-23. This is not a full launch sign-off.
   its Firebase project-config request changed from HTTP 403 to HTTP 200 with
   the matching Android package/certificate headers. SMS delivery still requires
   a handset retry; this configuration probe does not send an SMS.
+- Subsequent handset logs showed Play Integrity rejecting the sideloaded APK,
+  followed by failed reCAPTCHA verification. A browser-context configuration
+  probe reproduced a 403 from the Android-only API-key restriction. The
+  follow-up configuration removes that application restriction while retaining
+  the existing API service allowlist, enabling the documented browser fallback.
+  The launch checker now probes this path; it does not simulate CAPTCHA or SMS.
 
 ## Verified
 
