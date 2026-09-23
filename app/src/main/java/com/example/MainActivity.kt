@@ -57,6 +57,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.example.ui.SusuViewModel
 import com.example.ui.components.AddMemberDialog
 import com.example.ui.components.BiometricAuthDialog
@@ -183,6 +184,15 @@ class MainActivity : FragmentActivity() {
         }
 
         val lifecycleOwner = LocalLifecycleOwner.current
+
+        LaunchedEffect(lifecycleOwner) {
+          lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+              viewModel.refreshClaimsWhileVisible()
+              kotlinx.coroutines.delay(5000)
+            }
+          }
+        }
 
         DisposableEffect(lifecycleOwner) {
           val observer = LifecycleEventObserver { _, event ->

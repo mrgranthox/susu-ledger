@@ -103,7 +103,7 @@ class SusuRepository(private val database: SusuDatabase) {
         }
         val localMember = memberById ?: memberByPhone ?: return@forEach
 
-        dao.insertClaim(
+        val rowId = dao.insertCloudClaimIfAbsent(
           ClaimEntity(
             id = cloudClaim.id,
             cycleId = localCycleId,
@@ -115,7 +115,7 @@ class SusuRepository(private val database: SusuDatabase) {
             state = cloudClaim.state
           )
         )
-        inserted += 1
+        if (rowId != -1L) inserted += 1
       }
 
       inserted
@@ -148,6 +148,11 @@ class SusuRepository(private val database: SusuDatabase) {
     sendWhatsAppReceipt: Boolean = true,
     associatedClaimId: String? = null
   ): PaymentEntity = database.withTransaction {
+    if (associatedClaimId != null) {
+      val claim = dao.getClaimById(associatedClaimId) ?: error("Claim not found")
+      require(claim.state == "pending") { "This claim has already been resolved" }
+      require(claim.cycleId == cycleId && claim.memberId == memberId) { "Claim does not match this payment" }
+    }
     val member = dao.getMemberById(memberId)
       ?: throw IllegalArgumentException("Member not found: $memberId")
     val paymentCycle = dao.getCycleById(cycleId) ?: error("Cycle not found")
@@ -235,7 +240,6 @@ class SusuRepository(private val database: SusuDatabase) {
 
     // If there was an associated claim, resolve it
     if (associatedClaimId != null) {
-      dao.getAllClaims() // trigger check
       // Update claim
       val claim = ClaimEntity(
         id = associatedClaimId,

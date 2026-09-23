@@ -242,6 +242,18 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   private val _isSyncing = MutableStateFlow(false)
   val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
+  suspend fun refreshClaimsWhileVisible() {
+    val groupId = _selectedGroupId.value
+    if (groupId.isBlank() || com.google.firebase.auth.FirebaseAuth.getInstance().currentUser == null) return
+    try {
+      repository.syncPendingClaimsFromCloud(groupId)
+    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+      throw cancelled
+    } catch (_: Exception) {
+      // Keep local records while offline; retry on the next foreground refresh.
+    }
+  }
+
   fun syncWithCloud() {
     com.example.service.CloudSyncWorker.enqueue(getApplication())
     if (_isSyncing.value) return

@@ -197,6 +197,12 @@ interface SusuDao {
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertClaim(claim: ClaimEntity)
 
+  @Insert(onConflict = OnConflictStrategy.IGNORE)
+  suspend fun insertCloudClaimIfAbsent(claim: ClaimEntity): Long
+
+  @Query("SELECT * FROM claims WHERE id = :id")
+  suspend fun getClaimById(id: String): ClaimEntity?
+
   @Update
   suspend fun updateClaim(claim: ClaimEntity)
 
