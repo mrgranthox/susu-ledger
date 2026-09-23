@@ -56,6 +56,13 @@ router.get('/status', async (req, res) => {
 
 router.use(requirePhoneAuth);
 
+router.get('/account/backup', async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await require('../services/restoreService').getAccountBackup(req.auth.phone_number));
+  } catch (error) { next(error); }
+});
+
 router.use(async (req, res, next) => {
   try {
     let groupId = req.path.match(/^\/groups\/([^/]+)/)?.[1] || req.body.groupId;

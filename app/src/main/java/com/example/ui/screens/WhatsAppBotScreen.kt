@@ -109,6 +109,7 @@ fun WhatsAppBotScreen(
   messages: List<MessageLogEntity>,
   members: List<MemberEntity>,
   pairingCode: String = "",
+  pairingSecondsRemaining: Int = 0,
   isBotConnected: Boolean = false,
   connectionError: String? = null,
   cloudStatus: CloudSystemStatusResponse? = null,
@@ -261,7 +262,7 @@ fun WhatsAppBotScreen(
                   ) {
                     Column {
                       Text(
-                        text = "ACTIVE PAIRING CODE",
+                        text = if (pairingSecondsRemaining > 0) "ACTIVE PAIRING CODE" else "PAIRING CODE NOT READY",
                         fontSize = 8.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.6.sp,
@@ -278,8 +279,9 @@ fun WhatsAppBotScreen(
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                       IconButton(
+                        enabled = pairingSecondsRemaining > 0,
                         onClick = {
-                          clipboard.setText(AnnotatedString(pairingCode))
+                          clipboard.setText(AnnotatedString("PAIR:$pairingCode"))
                           Toast.makeText(context, "Pairing code copied!", Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.size(30.dp)
@@ -293,6 +295,7 @@ fun WhatsAppBotScreen(
                       }
 
                       TextButton(
+                        enabled = pairingSecondsRemaining > 0,
                         onClick = {
                           val intent = Intent(Intent.ACTION_VIEW).apply {
                             data = Uri.parse("https://wa.me/233545908371?text=${Uri.encode("PAIR:$pairingCode")}")
@@ -300,6 +303,7 @@ fun WhatsAppBotScreen(
                           try {
                             context.startActivity(intent)
                           } catch (e: Exception) {
+                            clipboard.setText(AnnotatedString("PAIR:$pairingCode"))
                             Toast.makeText(context, "Copied PAIR:$pairingCode", Toast.LENGTH_SHORT).show()
                           }
                         },

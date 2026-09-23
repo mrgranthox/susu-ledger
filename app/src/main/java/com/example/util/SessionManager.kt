@@ -11,6 +11,29 @@ import android.content.SharedPreferences
 class SessionManager(context: Context) {
   private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+  data class PairingSession(val code: String, val expiresAt: Long) {
+    fun secondsRemaining(now: Long = System.currentTimeMillis()): Int =
+      ((expiresAt - now).coerceAtLeast(0) / 1000).toInt()
+  }
+
+  fun loadPairing(phone: String, groupId: String): PairingSession? {
+    val key = "pairing:$phone:$groupId"
+    val code = prefs.getString(key, null) ?: return null
+    return PairingSession(code, prefs.getLong("$key:expiry", 0))
+  }
+
+  fun savePairing(phone: String, groupId: String, session: PairingSession) {
+    val key = "pairing:$phone:$groupId"
+    prefs.edit().putString(key, session.code).putLong("$key:expiry", session.expiresAt).apply()
+  }
+
+  fun pairingForConnection(phone: String, groupId: String, forceNew: Boolean = false): PairingSession {
+    if (!forceNew) loadPairing(phone, groupId)?.let { return it }
+    return PairingSession(CryptoUtils.generatePairingCode(), System.currentTimeMillis() + 900_000).also {
+      savePairing(phone, groupId, it)
+    }
+  }
+
   companion object {
     private const val PREFS_NAME = "susu_ledger_session"
     private const val KEY_IS_ONBOARDED = "is_onboarded"

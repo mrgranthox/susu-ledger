@@ -61,6 +61,27 @@ test('invalid payment rolls back the entire group upload', async () => {
   assert.equal((await db.query('SELECT id FROM groups WHERE id=$1',[payload.group.id])).rowCount,0);
 });
 
+test('account recovery returns an owner-scoped complete ledger that can be synced again', async () => {
+  const { getAccountBackup } = require('../src/services/restoreService');
+  const first=fixture(), other=fixture();
+  await syncGroup(first,first.treasurer.phone);
+  await syncGroup(other,other.treasurer.phone);
+  const backup=await getAccountBackup(first.treasurer.phone);
+  assert.equal(backup.version,1);
+  assert.deepEqual(backup.groups.map(g=>g.id),[first.group.id]);
+  assert.deepEqual(backup.payments.map(p=>p.id),[first.payments[0].id]);
+  assert.equal(backup.entries.length,2);
+  assert.equal(backup.cycles[0].dueDate,'2026-09-25');
+  assert.equal(backup.identities.some(i=>i.phone===other.treasurer.phone),false);
+  assert.equal(backup.payments[0].isSynced,true);
+  assert.equal(typeof backup.payments[0].confirmedAt,'number');
+  assert.equal(backup.identities.some(i=>'pinHash' in i),false);
+  await syncGroup({group:backup.groups[0],treasurer:backup.identities.find(i=>i.id===backup.groups[0].treasurerId),
+    members:backup.members,cycles:backup.cycles,payments:backup.payments},first.treasurer.phone);
+  assert.equal((await getAccountBackup(first.treasurer.phone)).payments.length,1);
+  assert.equal((await getAccountBackup('+233240009999')).groups.length,0);
+});
+
 test('owner checks reject another phone and foreign member references', async () => {
   const first=fixture(),second=fixture();
   await syncGroup(first,first.treasurer.phone);
@@ -219,6 +240,7 @@ test('HTTP auth fails closed; signed webhook processes batches once and retries 
   try {
     assert.equal((await fetch(`${base}/api/app/sync`,{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,401);
     assert.equal((await fetch(`${base}/api/app/groups/${randomUUID()}`)).status,401);
+    assert.equal((await fetch(`${base}/api/app/account/backup`)).status,401);
     const payload={object:'whatsapp_business_account',entry:[{changes:[{value:{messages:[{id:'message-1',from:'233240000000',type:'text',text:{body:'PAID'}},{id:'message-2',from:'233240000000',type:'text',text:{body:'BALANCE'}}]}}]}]};
     assert.equal((await send(payload,false)).status,401);
     assert.equal((await send(payload)).status,200);

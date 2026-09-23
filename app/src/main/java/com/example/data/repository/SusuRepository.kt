@@ -43,6 +43,61 @@ class SusuRepository(private val database: SusuDatabase) {
   val allMessages: Flow<List<MessageLogEntity>> = dao.getAllMessages()
   val unsyncedPaymentsCount: Flow<Int> = dao.getUnsyncedPaymentsCount()
 
+  suspend fun restoreAccountFromCloud(verifiedPhone: String, newPin: String): IdentityEntity {
+    val response = SusuApiClient.getApiService().getAccountBackup()
+    check(response.isSuccessful) { "Cloud recovery failed (HTTP ${response.code()}). Nothing was removed from this phone." }
+    return importAccountBackup(response.body() ?: error("Cloud recovery returned no data"), verifiedPhone, newPin)
+  }
+
+  suspend fun importAccountBackup(backup: com.example.data.remote.AccountBackup, verifiedPhone: String, newPin: String): IdentityEntity {
+    require(backup.version == 1) { "Unsupported cloud backup version" }
+    require(newPin.length == 4 && newPin.all(Char::isDigit)) { "Choose a four-digit PIN" }
+    fun normalized(phone: String) = com.example.util.GhanaPhoneUtils.toE164(phone)
+    val owner = backup.identities.firstOrNull { normalized(it.phone) == normalized(verifiedPhone) }
+      ?: error("No cloud-backed officer account was found for this verified number.")
+    check(backup.groups.isNotEmpty() && backup.groups.all { it.treasurerId == owner.id }) { "No owned cloud groups found" }
+    return database.withTransaction {
+      val existingGroups = dao.getAllGroupsOnce().map { cloudId(it.id) }.toSet()
+      // Recovery is additive: never replace existing groups or unsynced local payments.
+      val missingGroups = backup.groups.filter { cloudId(it.id) !in existingGroups }
+      val groupIds = missingGroups.map { it.id }.toSet()
+      val cycles = backup.cycles.filter { it.groupId in groupIds }
+      val cycleIds = cycles.map { it.id }.toSet()
+      val payments = backup.payments.filter { it.cycleId in cycleIds }
+      val paymentIds = payments.map { it.id }.toSet()
+      val entries = backup.entries.filter { it.paymentId in paymentIds }
+      val integrity = verifyLedgerIntegrity(payments, entries)
+      check(integrity.isChainValid && integrity.isDoubleEntryBalanced) { "Cloud ledger failed integrity checks. Recovery cancelled." }
+      payments.forEach { p ->
+        val rows = entries.filter { it.paymentId == p.id }
+        check(kotlin.math.abs(rows.filter { it.entryType == "debit" }.sumOf { it.amount } - p.amountPaid) < 0.001 &&
+          kotlin.math.abs(rows.filter { it.entryType == "credit" }.sumOf { it.amount } - p.amountPaid) < 0.001) { "Cloud payment has incomplete ledger entries" }
+      }
+      val localIdentities = dao.getAllIdentitiesOnce()
+      val identityIds = backup.identities.associate { incoming ->
+        incoming.id to (localIdentities.firstOrNull { normalized(it.phone) == normalized(incoming.phone) }?.id ?: incoming.id)
+      }
+      backup.identities.forEach { dao.insertIdentity(it.copy(id = identityIds.getValue(it.id))) }
+      missingGroups.forEach { dao.insertGroup(it.copy(treasurerId = identityIds.getValue(it.treasurerId), officerId = it.officerId?.let(identityIds::get))) }
+      backup.members.filter { it.groupId in groupIds }.forEach { member ->
+        dao.insertMember(member.copy(identityId = identityIds.getValue(member.identityId),
+          totalContributed = payments.filter { it.memberId == member.id && it.status == "confirmed" }.sumOf { it.amountPaid }))
+      }
+      cycles.forEach { dao.insertCycle(it.copy(closedBy = it.closedBy?.let(identityIds::get))) }
+      backup.accounts.filter { it.groupId in groupIds }.forEach { dao.insertAccount(it) }
+      payments.forEach { dao.insertPayment(it.copy(confirmedBy = identityIds.getValue(it.confirmedBy), isSynced = true)) }
+      dao.insertLedgerEntries(entries)
+      backup.claims.filter { it.cycleId in cycleIds }.forEach { dao.insertClaim(it.copy(resolvedBy = it.resolvedBy?.let(identityIds::get))) }
+      backup.corrections.filter { it.paymentId in paymentIds }.forEach {
+        dao.insertLedgerCorrection(it.copy(enteredBy = identityIds.getValue(it.enteredBy), approvedBy = it.approvedBy?.let(identityIds::get)))
+      }
+      backup.audits.filter { it.groupId in groupIds }.forEach { dao.insertAuditLog(it.copy(actorId = it.actorId?.let(identityIds::get))) }
+      val restoredOwner = dao.getIdentityById(identityIds.getValue(owner.id)) ?: error("Officer recovery failed")
+      dao.insertUser(UserEntity(restoredOwner.id, CryptoUtils.hashPin(newPin, restoredOwner.id), "treasurer"))
+      restoredOwner
+    }
+  }
+
   suspend fun syncAllOfflineDataToCloud(): Int {
     hasPendingCloudMessages = false
     var uploaded = 0
@@ -577,11 +632,18 @@ class SusuRepository(private val database: SusuDatabase) {
   suspend fun verifyLedgerIntegrity(payments: List<PaymentEntity>, ledgerEntries: List<LedgerEntryEntity>): VerificationReport {
     var isChainValid = true
     var brokenIndex: Int? = null
-    var expectedPrevHash = CryptoUtils.getGenesisHash()
+    // Local history may be one device chain; restored cloud history has one chain per group.
+    val byHash = payments.associateBy { it.currentHash }
+    val rooted = mutableSetOf(CryptoUtils.getGenesisHash())
 
     for (i in payments.indices) {
       val payment = payments[i]
-      if (payment.prevHash != expectedPrevHash) {
+      var cursor = payment.currentHash
+      val path = mutableSetOf<String>()
+      while (cursor !in rooted && path.add(cursor)) {
+        cursor = byHash[cursor]?.prevHash ?: break
+      }
+      if (cursor !in rooted || byHash.size != payments.size) {
         isChainValid = false
         brokenIndex = i
         break
@@ -602,7 +664,7 @@ class SusuRepository(private val database: SusuDatabase) {
         break
       }
 
-      expectedPrevHash = payment.currentHash
+      rooted.addAll(path)
     }
 
     val debits = ledgerEntries.filter { it.entryType == "debit" }.sumOf { it.amount }

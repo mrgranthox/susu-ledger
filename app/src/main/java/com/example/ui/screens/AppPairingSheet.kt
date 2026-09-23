@@ -169,6 +169,7 @@ fun AppPairingSheet(
             Spacer(modifier = Modifier.width(12.dp))
 
             IconButton(
+              enabled = secondsRemaining > 0,
               onClick = {
                 clipboard.setText(AnnotatedString("PAIR:$pairingCode"))
                 Toast.makeText(context, "Pairing code copied to clipboard", Toast.LENGTH_SHORT).show()
@@ -212,7 +213,7 @@ fun AppPairingSheet(
             shape = RoundedCornerShape(8.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp)
           ) {
-            Text("Auto-Generate New Code", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = ForestGreenPrimary)
+            Text("Generate new code", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = ForestGreenPrimary)
           }
         }
       }

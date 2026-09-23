@@ -8,6 +8,9 @@ import retrofit2.http.Path
 
 interface SusuApiService {
 
+  @GET("api/app/account/backup")
+  suspend fun getAccountBackup(): Response<AccountBackup>
+
   @POST("api/app/sync")
   suspend fun syncGroup(@Body request: SyncGroupRequest): Response<SyncGroupResponse>
 

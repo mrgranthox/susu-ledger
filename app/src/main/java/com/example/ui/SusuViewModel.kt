@@ -24,6 +24,8 @@ import com.example.util.DeviceContact
 import com.example.util.GhanaPhoneUtils
 import com.example.util.SessionManager
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -95,44 +97,81 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     generateNewPairingCode()
   }
 
-  fun generateNewPairingCode() {
-    val newCode = CryptoUtils.generatePairingCode()
+  private var pairingJob: Job? = null
+  private var pairingOwner = ""
+  private var pairingDeadline = 0L
+  private var pairingCompleted = false
+
+  fun generateNewPairingCode() = startPairing(forceNew = true)
+
+  private fun startPairing(forceNew: Boolean = false) {
+    val phoneNum = _userPhone.value
+    val groupId = _selectedGroupId.value
+    if (phoneNum.isBlank() || groupId.isBlank()) return
+    val owner = "$phoneNum:$groupId"
+    // Reopening the sheet or repeated taps must not race an existing registration.
+    if (pairingJob?.isActive == true && pairingOwner == owner && (!forceNew || pairingDeadline == 0L)) return
+    pairingJob?.cancel()
+    pairingOwner = owner
+    pairingCompleted = false
+    val session = sessionManager.pairingForConnection(phoneNum, groupId, forceNew)
+    val newCode = session.code
     _pairingCode.value = newCode
     _pairingSecondsRemaining.value = 0
+    pairingDeadline = 0
+    if (session.secondsRemaining() <= 0) {
+      _toastMessage.value = "Pairing code expired. Tap Generate new code to start again."
+      return
+    }
 
-    viewModelScope.launch {
+    pairingJob = viewModelScope.launch {
       try {
-        repository.syncAllOfflineDataToCloud()
-        val phoneNum = _userPhone.value
-        val grpId = _selectedGroupId.value.ifBlank { null }
-        val response = SusuApiClient.getApiService().registerPairingCode(
-          PairBotRequest(
-            code = newCode,
-            phone = phoneNum,
-            groupId = grpId
-          )
-        )
-        if (response.isSuccessful) {
-          _pairingSecondsRemaining.value = 900
-          _toastMessage.value = "New pairing code $newCode registered"
-          _isBotConnected.value = false
-          while (_pairingCode.value == newCode && _pairingSecondsRemaining.value > 0) {
-            delay(5000)
-            val status = SusuApiClient.getApiService().getPairingStatus(newCode)
-            if (status.isSuccessful && status.body()?.status == "PAIRED") {
-              _isBotConnected.value = true
-              _toastMessage.value = "WhatsApp pairing confirmed"
-              _showPairingSheet.value = false
-              break
-            }
-          }
-        } else {
-          _pairingSecondsRemaining.value = 0
-          _toastMessage.value = "Pairing registration failed (HTTP ${response.code()}). Retry after syncing."
+        val api = SusuApiClient.getApiService()
+        // Recover a registration whose response was lost, without replacing its code.
+        val existing = api.getPairingStatus(newCode)
+        if (existing.isSuccessful && existing.body()?.status == "PAIRED") {
+          pairingCompleted = true
+          _isBotConnected.value = true
+          _showPairingSheet.value = false
+          return@launch
         }
+        if (!existing.isSuccessful && existing.code() != 404) {
+          error("Unable to check pairing (HTTP ${existing.code()}). Retry with the same code.")
+        }
+        if (existing.code() == 404) {
+          repository.syncAllOfflineDataToCloud()
+          val response = api.registerPairingCode(
+            PairBotRequest(
+              code = newCode,
+              phone = phoneNum,
+              groupId = groupId
+            )
+          )
+          if (!response.isSuccessful) error("Pairing registration failed (HTTP ${response.code()})")
+        } else if (existing.body()?.status != "PENDING_WHATSAPP_CONFIRMATION") {
+          error("This pairing code is no longer active. Generate a new code.")
+        }
+        pairingDeadline = session.expiresAt
+        _pairingSecondsRemaining.value = session.secondsRemaining()
+        _botConnectionError.value = null
+        while (_pairingCode.value == newCode && _pairingSecondsRemaining.value > 0) {
+          delay(5000)
+          val status = api.getPairingStatus(newCode)
+          if (status.isSuccessful && status.body()?.status == "PAIRED") {
+            pairingCompleted = true
+            _isBotConnected.value = true
+            _botConnectionError.value = null
+            _toastMessage.value = "WhatsApp pairing confirmed"
+            _showPairingSheet.value = false
+            break
+          }
+          if (!status.isSuccessful) error("Unable to check pairing (HTTP ${status.code()})")
+        }
+      } catch (e: CancellationException) {
+        throw e
       } catch (e: Exception) {
-        _pairingSecondsRemaining.value = 0
-        _toastMessage.value = "Pairing registration failed: ${e.localizedMessage}"
+        _botConnectionError.value = "Pairing connection interrupted: ${e.localizedMessage}"
+        _toastMessage.value = _botConnectionError.value
       }
     }
   }
@@ -403,13 +442,25 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   init {
     // Pairing timer countdown
     viewModelScope.launch {
+      combine(_userPhone, _selectedGroupId) { phone, group -> phone to group }.collect { (phone, group) ->
+        pairingJob?.cancel()
+        pairingJob = null
+        pairingDeadline = 0
+        pairingCompleted = false
+        _pairingSecondsRemaining.value = 0
+        _pairingCode.value = ""
+        val saved = sessionManager.loadPairing(phone, group)
+        if (phone.isNotBlank() && group.isNotBlank() && saved != null) {
+          // Restore on process recreation, but never silently replace an expired code.
+          _pairingCode.value = saved.code
+          if (saved.secondsRemaining() > 0) startPairing()
+        }
+      }
+    }
+    viewModelScope.launch {
       while (true) {
         delay(1000)
-        _pairingSecondsRemaining.value = if (_pairingSecondsRemaining.value > 1) {
-          _pairingSecondsRemaining.value - 1
-        } else {
-          0
-        }
+        _pairingSecondsRemaining.value = ((pairingDeadline - System.currentTimeMillis()).coerceAtLeast(0) / 1000).toInt()
       }
     }
 
@@ -478,7 +529,6 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         _selectedGroupId.value = newGroup.id
         _userPhone.value = treasurerPhone
         _userRole.value = "treasurer"
-        _pairingCode.value = CryptoUtils.generatePairingCode()
         _isAuthenticated.value = true
         _isOnboardingCompleted.value = true
         _isAppLocked.value = false
@@ -621,7 +671,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
       } ?: repository.getIdentityByPhone(phone)
 
       if (identity == null) {
-        val err = "No registered officer account found for $phone. Please create your Susu group first."
+        val err = "This account is not on this phone. Use Restore account with SMS to recover your cloud ledger."
         _toastMessage.value = err
         onResult(false, err)
         return@launch
@@ -668,6 +718,21 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
 
       _toastMessage.value = "Welcome back, ${identity.displayName}!"
       onResult(true, null)
+    }
+  }
+
+  fun restoreOfficerAccount(newPin: String, onResult: (Boolean, String?) -> Unit) {
+    viewModelScope.launch {
+      try {
+        val verifiedPhone = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.phoneNumber
+          ?: error("Verify your phone by SMS before restoring.")
+        val owner = repository.restoreAccountFromCloud(verifiedPhone, newPin)
+        authenticateOfficer(owner.phone, newPin, "treasurer", onResult)
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        onResult(false, e.localizedMessage ?: "Cloud recovery failed. Please retry.")
+      }
     }
   }
 
@@ -813,7 +878,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
 
   fun showPairingSheet(show: Boolean) {
     _showPairingSheet.value = show
-    if (show && _pairingSecondsRemaining.value <= 0) generateNewPairingCode()
+    if (show) startPairing(forceNew = pairingCompleted)
   }
 
   fun addNewMember(alias: String, phone: String) {

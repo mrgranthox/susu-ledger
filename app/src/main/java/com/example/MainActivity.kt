@@ -18,6 +18,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -246,6 +247,7 @@ class MainActivity : FragmentActivity() {
             if (isOnboardingCompleted) {
               // Returning officer session: Directly present PIN / Biometric login to prevent starting from scratch
               AuthOtpScreen(
+                onRestoreAccount = { pin, result -> viewModel.restoreOfficerAccount(pin, result) },
                 onBiometricAuthenticated = { result -> viewModel.authenticateBiometricOfficer(result) },
                 onAuthenticate = { phone, pin, role, onResult ->
                   viewModel.authenticateOfficer(phone, pin, role) { success, err ->
@@ -287,6 +289,7 @@ class MainActivity : FragmentActivity() {
                 }
                 showLoginScreen -> {
                   AuthOtpScreen(
+                    onRestoreAccount = { pin, result -> viewModel.restoreOfficerAccount(pin, result) },
                     onBiometricAuthenticated = { result -> viewModel.authenticateBiometricOfficer(result) },
                     onAuthenticate = { phone, pin, role, onResult ->
                       viewModel.authenticateOfficer(phone, pin, role) { success, err ->
@@ -393,6 +396,7 @@ class MainActivity : FragmentActivity() {
                   messages = messages,
                   members = members,
                   pairingCode = pairingCode,
+                  pairingSecondsRemaining = pairingSecondsRemaining,
                   cloudStatus = cloudStatus,
                   isBotConnected = isBotConnected,
                   connectionError = botConnectionError,
@@ -529,6 +533,7 @@ class MainActivity : FragmentActivity() {
                     modifier = Modifier
                       .fillMaxSize()
                       .padding(innerPadding)
+                      .consumeWindowInsets(innerPadding)
                   ) {
                     when (currentNavIndex) {
                       0 -> DashboardScreen(

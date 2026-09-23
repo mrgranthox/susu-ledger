@@ -85,6 +85,7 @@ import kotlinx.coroutines.launch
 fun AuthOtpScreen(
   onAuthenticate: (phone: String, pin: String, role: String, onResult: (Boolean, String?) -> Unit) -> Unit,
   onNavigateToRegister: () -> Unit,
+  onRestoreAccount: (String, (Boolean, String?) -> Unit) -> Unit = { _, result -> result(false, "Recovery is unavailable.") },
   onBiometricAuthenticated: ((Boolean, String?) -> Unit) -> Unit = { it(false, "Sign in with your phone and PIN first.") }
 ) {
   val context = LocalContext.current
@@ -102,10 +103,6 @@ fun AuthOtpScreen(
 
   // Forgot PIN Reset Dialog State
   var showResetDialog by remember { mutableStateOf(false) }
-  var resetPhoneInput by remember { mutableStateOf("") }
-  var resetNewPinInput by remember { mutableStateOf("") }
-  var resetConfirmPinInput by remember { mutableStateOf("") }
-  var resetErrorMsg by remember { mutableStateOf<String?>(null) }
 
   val scrollState = rememberScrollState()
 
@@ -287,10 +284,6 @@ fun AuthOtpScreen(
 
             TextButton(
               onClick = {
-                resetPhoneInput = phoneNumber
-                resetNewPinInput = ""
-                resetConfirmPinInput = ""
-                resetErrorMsg = null
                 showResetDialog = true
               },
               modifier = Modifier.height(28.dp)
@@ -433,6 +426,11 @@ fun AuthOtpScreen(
       Spacer(modifier = Modifier.height(12.dp))
 
       // Biometric / Device Lock Quick Unlock
+      TextButton(onClick = { showResetDialog = true }, enabled = !isAuthenticating,
+        modifier = Modifier.fillMaxWidth()) {
+        Text("Restore account with SMS")
+      }
+
       OutlinedButton(
         onClick = {
           if (activity == null) {
@@ -519,98 +517,11 @@ fun AuthOtpScreen(
       }
     }
 
-    // Clean PIN Reset Dialog
     if (showResetDialog) {
-      AlertDialog(
-        onDismissRequest = { showResetDialog = false },
-        title = {
-          Text(
-            text = "Reset Officer PIN",
-            fontWeight = FontWeight.Bold,
-            color = TextPrimary
-          )
-        },
-        text = {
-          Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(
-              text = "Enter your registered phone number and your new 4-digit security PIN.",
-              fontSize = 12.sp,
-              color = TextSecondary
-            )
-
-            OutlinedTextField(
-              value = resetPhoneInput,
-              onValueChange = { resetPhoneInput = it },
-              placeholder = { Text("Registered phone (+233)") },
-              modifier = Modifier.fillMaxWidth(),
-              singleLine = true,
-              keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-              shape = RoundedCornerShape(8.dp)
-            )
-
-            OutlinedTextField(
-              value = resetNewPinInput,
-              onValueChange = { if (it.length <= 4 && it.all { c -> c.isDigit() }) resetNewPinInput = it },
-              placeholder = { Text("New 4-Digit PIN") },
-              modifier = Modifier.fillMaxWidth(),
-              singleLine = true,
-              visualTransformation = PasswordVisualTransformation(),
-              keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-              shape = RoundedCornerShape(8.dp)
-            )
-
-            OutlinedTextField(
-              value = resetConfirmPinInput,
-              onValueChange = { if (it.length <= 4 && it.all { c -> c.isDigit() }) resetConfirmPinInput = it },
-              placeholder = { Text("Confirm New 4-Digit PIN") },
-              modifier = Modifier.fillMaxWidth(),
-              singleLine = true,
-              visualTransformation = PasswordVisualTransformation(),
-              keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-              shape = RoundedCornerShape(8.dp)
-            )
-
-            if (resetErrorMsg != null) {
-              Text(
-                text = resetErrorMsg ?: "",
-                fontSize = 11.sp,
-                color = ErrorRed,
-                fontWeight = FontWeight.SemiBold
-              )
-            }
-          }
-        },
-        confirmButton = {
-          Button(
-            onClick = {
-              if (resetPhoneInput.isBlank()) {
-                resetErrorMsg = "Please enter your registered phone number."
-                return@Button
-              }
-              if (resetNewPinInput.length < 4) {
-                resetErrorMsg = "PIN must be exactly 4 digits."
-                return@Button
-              }
-              if (resetNewPinInput != resetConfirmPinInput) {
-                resetErrorMsg = "PIN confirmation does not match."
-                return@Button
-              }
-
-              phoneNumber = resetPhoneInput
-              pinValue = resetNewPinInput
-              showResetDialog = false
-              successMessage = "PIN successfully updated. You can now sign in."
-            },
-            colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-          ) {
-            Text("Update PIN", color = PureWhite, fontWeight = FontWeight.Bold)
-          }
-        },
-        dismissButton = {
-          TextButton(onClick = { showResetDialog = false }) {
-            Text("Cancel", color = TextSecondary)
-          }
-        }
+      AccountRecoveryDialog(
+        initialPhone = phoneNumber,
+        onDismiss = { showResetDialog = false },
+        onRestore = onRestoreAccount
       )
     }
   }
