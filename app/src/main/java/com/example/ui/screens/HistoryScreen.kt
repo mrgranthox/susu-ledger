@@ -31,15 +31,18 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -79,6 +82,7 @@ data class PastCycleItem(
   val dateRange: String
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
   groupName: String = "Susu Group",
@@ -535,41 +539,49 @@ fun HistoryScreen(
     )
   }
 
-  // View All Past Cycles Modal
+  // View All Past Weeks Bottom Sheet
   if (showAllCyclesModal) {
-    AlertDialog(
+    val allCyclesSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
       onDismissRequest = { showAllCyclesModal = false },
-      title = {
-        Text("All Past Weeks (${pastCycles.size})", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-      },
-      text = {
-        Column(
-          modifier = Modifier.fillMaxWidth(),
-          verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-          pastCycles.forEach { cycle ->
-            Row(
-              modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
-                  showAllCyclesModal = false
-                  selectedPastCycleForDetail = cycle
-                }
-                .padding(vertical = 6.dp),
-              horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-              Text("${cycle.week} (${cycle.paidRatio})", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-              Text(cycle.amountCollected, fontWeight = FontWeight.Bold, color = ForestGreenPrimary, fontSize = 13.sp)
-            }
+      sheetState = allCyclesSheetState,
+      containerColor = PureWhite
+    ) {
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .verticalScroll(rememberScrollState())
+          .padding(horizontal = 20.dp)
+          .padding(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        Text(
+          text = "All Past Weeks (${pastCycles.size})",
+          style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+        )
+        pastCycles.forEach { cycle ->
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .clickable {
+                showAllCyclesModal = false
+                selectedPastCycleForDetail = cycle
+              }
+              .padding(vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+          ) {
+            Text("${cycle.week} (${cycle.paidRatio})", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(cycle.amountCollected, fontWeight = FontWeight.Bold, color = ForestGreenPrimary, fontSize = 13.sp)
           }
         }
-      },
-      confirmButton = {
-        TextButton(onClick = { showAllCyclesModal = false }) {
+        TextButton(
+          onClick = { showAllCyclesModal = false },
+          modifier = Modifier.align(Alignment.End)
+        ) {
           Text("Close", color = ForestGreenPrimary)
         }
       }
-    )
+    }
   }
 }
 

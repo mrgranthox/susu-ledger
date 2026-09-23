@@ -85,17 +85,8 @@ abstract class SusuDatabase : RoomDatabase() {
       )
       dao.insertIdentities(listOf(treasurer, officer, member1, member2))
 
-      val treasurerUser = UserEntity(
-        id = treasurer.id,
-        pinHash = CryptoUtils.hashPin("1234", treasurer.id),
-        role = "treasurer"
-      )
-      val officerUser = UserEntity(
-        id = officer.id,
-        pinHash = CryptoUtils.hashPin("1234", officer.id),
-        role = "second_officer"
-      )
-      dao.insertUsers(listOf(treasurerUser, officerUser))
+      // NOTE: No default/demo officer PINs are seeded. Officers authenticate
+      // with credentials established during organic onboarding (salted PIN hashes).
 
       val group1 = GroupEntity(
         id = "group-nima-001",

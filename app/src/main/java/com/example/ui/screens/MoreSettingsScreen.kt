@@ -55,8 +55,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -66,6 +68,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -106,6 +109,7 @@ data class AuditLogEntry(
   val category: AuditFilter
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MoreSettingsScreen(
   groupName: String = "Nima Market Susu",
@@ -973,30 +977,40 @@ fun MoreSettingsScreen(
     )
   }
 
-  // View All Audit Logs Modal
+  // View All Audit Logs Bottom Sheet
   if (showAllAuditLogsModal) {
-    AlertDialog(
+    val allAuditSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
       onDismissRequest = { showAllAuditLogsModal = false },
-      title = { Text("Complete Activity Log (${filteredAuditLogs.size})", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
-      text = {
-        Column(
-          modifier = Modifier.fillMaxWidth(),
-          verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-          filteredAuditLogs.forEach { entry ->
-            Column {
-              Text(entry.description, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary))
-              Text("${entry.actorName} • ${entry.timestamp}", style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary, fontSize = 10.sp))
-            }
+      sheetState = allAuditSheetState,
+      containerColor = PureWhite
+    ) {
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .verticalScroll(rememberScrollState())
+          .padding(horizontal = 20.dp)
+          .padding(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+      ) {
+        Text(
+          text = "Complete Activity Log (${filteredAuditLogs.size})",
+          style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+        )
+        filteredAuditLogs.forEach { entry ->
+          Column {
+            Text(entry.description, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold, color = TextPrimary))
+            Text("${entry.actorName} • ${entry.timestamp}", style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary, fontSize = 10.sp))
           }
         }
-      },
-      confirmButton = {
-        TextButton(onClick = { showAllAuditLogsModal = false }) {
+        TextButton(
+          onClick = { showAllAuditLogsModal = false },
+          modifier = Modifier.align(Alignment.End)
+        ) {
           Text("Close", color = ForestGreenPrimary)
         }
       }
-    )
+    }
   }
 
   // Paystack MoMo Subscription Dialog

@@ -15,8 +15,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -25,14 +27,17 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,6 +79,7 @@ data class CycleMemberStatus(
   val disputeReason: String? = null
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CycleDetailScreen(
   cycleNumber: Int = 12,
@@ -286,40 +292,48 @@ fun CycleDetailScreen(
     }
   }
 
-  // Full Member List Modal
+  // Full Member List Bottom Sheet
   if (showAllMembersModal) {
-    AlertDialog(
+    val allMembersSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
       onDismissRequest = { showAllMembersModal = false },
-      title = {
-        Text("All Members (${filteredMembers.size})", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-      },
-      text = {
-        Column(
-          modifier = Modifier.fillMaxWidth(),
-          verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-          filteredMembers.forEach { item ->
-            CycleMemberRow(
-              status = item,
-              onMarkPaid = {
-                showAllMembersModal = false
-                onMarkPaid(item.member)
-              },
-              onResolveDispute = {
-                showAllMembersModal = false
-                activeDisputeMember = item
-                showResolveDisputeModal = true
-              }
-            )
-          }
+      sheetState = allMembersSheetState,
+      containerColor = PureWhite
+    ) {
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .verticalScroll(rememberScrollState())
+          .padding(horizontal = 20.dp)
+          .padding(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        Text(
+          text = "All Members (${filteredMembers.size})",
+          style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+        )
+        filteredMembers.forEach { item ->
+          CycleMemberRow(
+            status = item,
+            onMarkPaid = {
+              showAllMembersModal = false
+              onMarkPaid(item.member)
+            },
+            onResolveDispute = {
+              showAllMembersModal = false
+              activeDisputeMember = item
+              showResolveDisputeModal = true
+            }
+          )
         }
-      },
-      confirmButton = {
-        TextButton(onClick = { showAllMembersModal = false }) {
+        TextButton(
+          onClick = { showAllMembersModal = false },
+          modifier = Modifier.align(Alignment.End)
+        ) {
           Text("Close", color = ForestGreenPrimary)
         }
       }
-    )
+    }
   }
 
   // Resolve Dispute Modal

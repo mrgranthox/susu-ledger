@@ -70,12 +70,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -1131,39 +1133,47 @@ fun DashboardScreen(
     }
   }
 
-  // View All Claims Dialog
+  // View All Claims Bottom Sheet
   if (showAllClaimsModal) {
-    AlertDialog(
+    val allClaimsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
       onDismissRequest = { showAllClaimsModal = false },
-      title = {
-        Text("Pending Member Claims (${pendingClaims.size})", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-      },
-      text = {
-        Column(
-          modifier = Modifier.fillMaxWidth(),
-          verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-          pendingClaims.forEach { claim ->
-            AttentionClaimRow(
-              claim = claim,
-              onConfirm = {
-                showAllClaimsModal = false
-                onConfirmClaim(claim)
-              },
-              onReject = {
-                showAllClaimsModal = false
-                onRejectClaim(claim)
-              }
-            )
-          }
+      sheetState = allClaimsSheetState,
+      containerColor = PureWhite
+    ) {
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .verticalScroll(rememberScrollState())
+          .padding(horizontal = 20.dp)
+          .padding(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        Text(
+          text = "Pending Member Claims (${pendingClaims.size})",
+          style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+        )
+        pendingClaims.forEach { claim ->
+          AttentionClaimRow(
+            claim = claim,
+            onConfirm = {
+              showAllClaimsModal = false
+              onConfirmClaim(claim)
+            },
+            onReject = {
+              showAllClaimsModal = false
+              onRejectClaim(claim)
+            }
+          )
         }
-      },
-      confirmButton = {
-        TextButton(onClick = { showAllClaimsModal = false }) {
+        TextButton(
+          onClick = { showAllClaimsModal = false },
+          modifier = Modifier.align(Alignment.End)
+        ) {
           Text("Close", color = ForestGreenPrimary)
         }
       }
-    )
+    }
   }
 
   // Transaction Receipt & Cryptographic Verification Dialog
