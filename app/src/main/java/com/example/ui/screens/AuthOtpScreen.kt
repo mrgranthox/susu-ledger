@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -76,6 +77,7 @@ import com.example.ui.theme.BorderGrey
 import com.example.ui.theme.ErrorRed
 import com.example.ui.theme.ForestGreenLightFill
 import com.example.ui.theme.ForestGreenPrimary
+import com.example.ui.theme.InputBorderUnfocused
 import com.example.ui.theme.PureWhite
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
@@ -109,6 +111,7 @@ fun AuthOtpScreen(
   Surface(
     modifier = Modifier
       .fillMaxSize()
+      .imePadding()
       .testTag("auth_screen"),
     color = PureWhite
   ) {
@@ -204,7 +207,7 @@ fun AuthOtpScreen(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = NeutralSurfaceLight),
-        border = BorderStroke(1.dp, BorderGrey)
+        border = BorderStroke(1.dp, InputBorderUnfocused)
       ) {
         Column(modifier = Modifier.padding(16.dp)) {
           Text(
@@ -249,7 +252,7 @@ fun AuthOtpScreen(
               keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
               colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = ForestGreenPrimary,
-                unfocusedBorderColor = BorderGrey,
+                unfocusedBorderColor = InputBorderUnfocused,
                 focusedContainerColor = PureWhite,
                 unfocusedContainerColor = PureWhite
               ),
@@ -266,7 +269,7 @@ fun AuthOtpScreen(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = NeutralSurfaceLight),
-        border = BorderStroke(1.dp, BorderGrey)
+        border = BorderStroke(1.dp, InputBorderUnfocused)
       ) {
         Column(modifier = Modifier.padding(16.dp)) {
           Row(
@@ -321,7 +324,7 @@ fun AuthOtpScreen(
             },
             colors = OutlinedTextFieldDefaults.colors(
               focusedBorderColor = ForestGreenPrimary,
-              unfocusedBorderColor = BorderGrey,
+              unfocusedBorderColor = InputBorderUnfocused,
               focusedContainerColor = PureWhite,
               unfocusedContainerColor = PureWhite
             ),
@@ -423,13 +426,7 @@ fun AuthOtpScreen(
         }
       }
 
-      Spacer(modifier = Modifier.height(12.dp))
-
-      // Biometric / Device Lock Quick Unlock
-      TextButton(onClick = { showResetDialog = true }, enabled = !isAuthenticating,
-        modifier = Modifier.fillMaxWidth()) {
-        Text("Restore account with SMS")
-      }
+      Spacer(modifier = Modifier.height(14.dp))
 
       OutlinedButton(
         onClick = {
@@ -466,7 +463,7 @@ fun AuthOtpScreen(
           .height(46.dp)
           .testTag("biometric_login_btn"),
         shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(1.dp, BorderGrey),
+        border = BorderStroke(1.dp, InputBorderUnfocused),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary)
       ) {
         Icon(Icons.Default.Fingerprint, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(20.dp))
@@ -505,14 +502,14 @@ fun AuthOtpScreen(
         Icon(
           imageVector = Icons.Default.Shield,
           contentDescription = null,
-          tint = LineIconGrey(),
+          tint = TextSecondary,
           modifier = Modifier.size(14.dp)
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
           text = "Salted SHA-256 PIN • Double-Entry Balanced Ledger",
           fontSize = 10.sp,
-          color = LineIconGrey()
+          color = TextSecondary
         )
       }
     }
@@ -528,9 +525,6 @@ fun AuthOtpScreen(
 }
 
 @Composable
-private fun LineIconGrey() = Color(0xFF64748B)
-
-@Composable
 private fun RoleCard(
   title: String,
   subtitle: String,
@@ -544,7 +538,7 @@ private fun RoleCard(
       .background(if (isSelected) SoftGreenFill else NeutralSurfaceLight)
       .border(
         width = if (isSelected) 2.dp else 1.dp,
-        color = if (isSelected) ForestGreenPrimary else BorderGrey,
+        color = if (isSelected) ForestGreenPrimary else InputBorderUnfocused,
         shape = RoundedCornerShape(10.dp)
       )
       .clickable(onClick = onClick)

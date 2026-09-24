@@ -37,17 +37,21 @@ class CloudSyncWorker(context: Context, parameters: WorkerParameters) : Coroutin
     private val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 
     fun schedule(context: Context) {
-      WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-        "susu-periodic-sync", ExistingPeriodicWorkPolicy.KEEP,
-        PeriodicWorkRequestBuilder<CloudSyncWorker>(15, TimeUnit.MINUTES).setConstraints(constraints).build()
-      )
+      runCatching {
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+          "susu-periodic-sync", ExistingPeriodicWorkPolicy.KEEP,
+          PeriodicWorkRequestBuilder<CloudSyncWorker>(15, TimeUnit.MINUTES).setConstraints(constraints).build()
+        )
+      }
     }
 
     fun enqueue(context: Context) {
-      WorkManager.getInstance(context).enqueueUniqueWork(
-        "susu-pending-sync", ExistingWorkPolicy.APPEND_OR_REPLACE,
-        OneTimeWorkRequestBuilder<CloudSyncWorker>().setConstraints(constraints).build()
-      )
+      runCatching {
+        WorkManager.getInstance(context).enqueueUniqueWork(
+          "susu-pending-sync", ExistingWorkPolicy.APPEND_OR_REPLACE,
+          OneTimeWorkRequestBuilder<CloudSyncWorker>().setConstraints(constraints).build()
+        )
+      }
     }
   }
 }

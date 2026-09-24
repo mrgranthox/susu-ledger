@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -86,10 +87,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import com.example.ui.theme.BorderGrey
 import com.example.ui.theme.ErrorRed
 import com.example.ui.theme.ForestGreenLightFill
 import com.example.ui.theme.ForestGreenPrimary
+import com.example.ui.theme.InputBorderUnfocused
 import com.example.ui.theme.LineIconBlack
 import com.example.ui.theme.LineIconGreen
 import com.example.ui.theme.LineIconGrey
@@ -112,9 +119,12 @@ data class AuditLogEntry(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MoreSettingsScreen(
-  groupName: String = "Nima Market Susu",
+  groupName: String = "Susu Group",
   currentGroup: com.example.data.local.GroupEntity? = null,
   activeCycle: com.example.data.local.CycleEntity? = null,
+  isBiometricEnabled: Boolean = true,
+  onUpdateBiometricEnabled: (Boolean) -> Unit = {},
+  onChangePin: (newPin: String, onResult: (Boolean, String) -> Unit) -> Unit = { _, res -> res(true, "PIN updated") },
   onTogglePauseGroup: (reason: String) -> Unit = {},
   onUpdateContributionAmount: (newAmount: Double, applyToCurrentCycle: Boolean, reason: String) -> Unit = { _, _, _ -> },
   onRenameGroup: (newName: String) -> Unit = {},
@@ -130,11 +140,6 @@ fun MoreSettingsScreen(
   var activeSection by remember { mutableStateOf<String>("settings") } // "settings" or "activity_log"
 
   // Settings State
-  var biometricEnabled by remember { mutableStateOf(true) }
-  var showBiometricToggleVerificationDialog by remember { mutableStateOf(false) }
-  var pendingBiometricToggleState by remember { mutableStateOf(false) }
-  var biometricVerifyPin by remember { mutableStateOf("") }
-  var biometricVerifyError by remember { mutableStateOf<String?>(null) }
   var secondOfficerPhone by remember { mutableStateOf("") }
   var showAddOfficerDialog by remember { mutableStateOf(false) }
   var showChangePinDialog by remember { mutableStateOf(false) }
@@ -284,12 +289,7 @@ fun MoreSettingsScreen(
         Row(
           modifier = Modifier
             .fillMaxWidth()
-            .clickable {
-              pendingBiometricToggleState = !biometricEnabled
-              biometricVerifyPin = ""
-              biometricVerifyError = null
-              showBiometricToggleVerificationDialog = true
-            }
+            .clickable { onUpdateBiometricEnabled(!isBiometricEnabled) }
             .padding(vertical = 12.dp),
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.SpaceBetween
@@ -299,18 +299,13 @@ fun MoreSettingsScreen(
             Spacer(modifier = Modifier.width(12.dp))
             Column {
               Text("Biometric unlock", style = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary, fontWeight = FontWeight.SemiBold))
-              Text("Fingerprint / Face authorization (PIN verified)", style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary))
+              Text("Fingerprint / Face authorization for sensitive operations", style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary))
             }
           }
 
           Switch(
-            checked = biometricEnabled,
-            onCheckedChange = { targetVal ->
-              pendingBiometricToggleState = targetVal
-              biometricVerifyPin = ""
-              biometricVerifyError = null
-              showBiometricToggleVerificationDialog = true
-            },
+            checked = isBiometricEnabled,
+            onCheckedChange = { targetVal -> onUpdateBiometricEnabled(targetVal) },
             colors = SwitchDefaults.colors(
               checkedThumbColor = PureWhite,
               checkedTrackColor = ForestGreenPrimary,
@@ -771,168 +766,106 @@ fun MoreSettingsScreen(
     )
   }
 
-  // Biometric Toggle Verification Dialog (Enforce authentication when toggling on or off)
-  if (showBiometricToggleVerificationDialog) {
-    AlertDialog(
-      onDismissRequest = {
-        showBiometricToggleVerificationDialog = false
-        biometricVerifyPin = ""
-        biometricVerifyError = null
-      },
-      title = {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-          Icon(Icons.Default.Fingerprint, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(24.dp))
-          Spacer(modifier = Modifier.width(8.dp))
-          Text(
-            text = if (pendingBiometricToggleState) "Verify to Enable Biometrics" else "Verify to Disable Biometrics",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-          )
-        }
-      },
-      text = {
-        Column {
-          Text(
-            text = if (pendingBiometricToggleState)
-              "Please authenticate with your 4-digit PIN to enable fingerprint/face biometric unlocking for SusuLedger."
-            else
-              "For security, please enter your 4-digit PIN to confirm disabling biometric unlock.",
-            style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary)
-          )
-          Spacer(modifier = Modifier.height(14.dp))
+  // Change PIN dialog (Direct Room & Session persistence with confirmation & visibility toggles)
+  if (showChangePinDialog) {
+    var newPin by remember { mutableStateOf("") }
+    var confirmNewPin by remember { mutableStateOf("") }
+    var pinError by remember { mutableStateOf<String?>(null) }
+    var isPinVisible by remember { mutableStateOf(false) }
 
+    AlertDialog(
+      modifier = Modifier.imePadding(),
+      onDismissRequest = {
+        showChangePinDialog = false
+        pinError = null
+      },
+      title = { Text("Change 4-Digit PIN", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+      text = {
+        Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+          Text("Enter your new 4-digit PIN for sensitive ledger operations:", style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary))
+          Spacer(modifier = Modifier.height(12.dp))
           OutlinedTextField(
-            value = biometricVerifyPin,
+            value = newPin,
             onValueChange = {
               if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
-                biometricVerifyPin = it
-                biometricVerifyError = null
+                newPin = it
+                pinError = null
               }
             },
-            placeholder = { Text("••••") },
-            label = { Text("4-Digit Security PIN") },
-            modifier = Modifier.fillMaxWidth().testTag("biometric_verify_pin_input"),
+            label = { Text("New 4-Digit PIN") },
+            modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            isError = biometricVerifyError != null,
+            visualTransformation = if (isPinVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            trailingIcon = {
+              IconButton(onClick = { isPinVisible = !isPinVisible }) {
+                Icon(
+                  imageVector = if (isPinVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                  contentDescription = if (isPinVisible) "Hide PIN" else "Show PIN",
+                  tint = TextSecondary
+                )
+              }
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedBorderColor = ForestGreenPrimary,
+              unfocusedBorderColor = InputBorderUnfocused
+            )
+          )
+          Spacer(modifier = Modifier.height(10.dp))
+          OutlinedTextField(
+            value = confirmNewPin,
+            onValueChange = {
+              if (it.length <= 4 && it.all { ch -> ch.isDigit() }) {
+                confirmNewPin = it
+                pinError = null
+              }
+            },
+            label = { Text("Confirm New PIN") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            visualTransformation = if (isPinVisible) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
             colors = OutlinedTextFieldDefaults.colors(
               focusedBorderColor = ForestGreenPrimary,
-              unfocusedBorderColor = BorderGrey
+              unfocusedBorderColor = InputBorderUnfocused
             )
           )
-
-          if (biometricVerifyError != null) {
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-              text = biometricVerifyError ?: "",
-              color = ErrorRed,
-              fontSize = 12.sp,
-              fontWeight = FontWeight.SemiBold
-            )
-          }
-
-          Spacer(modifier = Modifier.height(12.dp))
-
-          // Quick Fingerprint sensor simulation tap
-          Surface(
-            modifier = Modifier
-              .fillMaxWidth()
-              .clickable {
-                biometricEnabled = pendingBiometricToggleState
-                showBiometricToggleVerificationDialog = false
-                biometricVerifyPin = ""
-                biometricVerifyError = null
-                Toast.makeText(
-                  context,
-                  if (pendingBiometricToggleState) "Biometric unlock verified & enabled" else "Biometric unlock verified & disabled",
-                  Toast.LENGTH_SHORT
-                ).show()
-              },
-            shape = RoundedCornerShape(8.dp),
-            color = ForestGreenLightFill,
-            border = BorderStroke(1.dp, ForestGreenPrimary.copy(alpha = 0.4f))
-          ) {
-            Row(
-              modifier = Modifier.padding(10.dp),
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.Center
-            ) {
-              Icon(Icons.Default.Fingerprint, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(20.dp))
-              Spacer(modifier = Modifier.width(8.dp))
-              Text("Touch Sensor to Verify Instantly", color = ForestGreenPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-            }
+          if (pinError != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(pinError ?: "", color = ErrorRed, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold))
           }
         }
       },
       confirmButton = {
         Button(
           onClick = {
-            if (biometricVerifyPin.length == 4) {
-              biometricEnabled = pendingBiometricToggleState
-              showBiometricToggleVerificationDialog = false
-              biometricVerifyPin = ""
-              biometricVerifyError = null
-              Toast.makeText(
-                context,
-                if (pendingBiometricToggleState) "Biometric unlock enabled" else "Biometric unlock disabled",
-                Toast.LENGTH_SHORT
-              ).show()
-            } else {
-              biometricVerifyError = "Please enter your full 4-digit PIN."
+            if (newPin.length != 4) {
+              pinError = "PIN must be exactly 4 digits."
+              return@Button
+            }
+            if (newPin != confirmNewPin) {
+              pinError = "PINs do not match. Please verify."
+              return@Button
+            }
+            onChangePin(newPin) { success, message ->
+              if (success) {
+                showChangePinDialog = false
+                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+              } else {
+                pinError = message
+              }
             }
           },
-          colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+          colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary, contentColor = PureWhite)
         ) {
-          Text("Verify & Confirm", color = PureWhite)
+          Text("Save PIN", color = PureWhite, fontWeight = FontWeight.Bold)
         }
       },
       dismissButton = {
         TextButton(onClick = {
-          showBiometricToggleVerificationDialog = false
-          biometricVerifyPin = ""
-          biometricVerifyError = null
+          showChangePinDialog = false
+          pinError = null
         }) {
-          Text("Cancel", color = TextSecondary)
-        }
-      }
-    )
-  }
-
-  // Change PIN dialog
-  if (showChangePinDialog) {
-    var newPin by remember { mutableStateOf("") }
-    AlertDialog(
-      onDismissRequest = { showChangePinDialog = false },
-      title = { Text("Change 4-Digit PIN", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
-      text = {
-        Column {
-          Text("Enter your new 4-digit PIN for sensitive authorizations:", style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary))
-          Spacer(modifier = Modifier.height(12.dp))
-          OutlinedTextField(
-            value = newPin,
-            onValueChange = { if (it.length <= 4 && it.all { ch -> ch.isDigit() }) newPin = it },
-            label = { Text("New PIN") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            colors = OutlinedTextFieldDefaults.colors(
-              focusedBorderColor = ForestGreenPrimary,
-              unfocusedBorderColor = BorderGrey
-            )
-          )
-        }
-      },
-      confirmButton = {
-        Button(
-          onClick = {
-            showChangePinDialog = false
-            Toast.makeText(context, "PIN updated successfully", Toast.LENGTH_SHORT).show()
-          },
-          colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-        ) {
-          Text("Save PIN", color = PureWhite)
-        }
-      },
-      dismissButton = {
-        TextButton(onClick = { showChangePinDialog = false }) {
           Text("Cancel", color = TextSecondary)
         }
       }

@@ -53,6 +53,7 @@ async function syncGroup(payload, authenticatedPhone) {
        ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,amount=EXCLUDED.amount,schedule=EXCLUDED.schedule,state=EXCLUDED.state`,
       [groupId,group.name,group.amount,group.currency || 'GHS',group.schedule,identity.id,group.state]
     );
+    const memberIdMap = {};
     for (const member of members) {
       if (cloudId(member.groupId) !== groupId) throw new Error('Member group mismatch');
       const mid = cloudId(member.id);
@@ -63,11 +64,25 @@ async function syncGroup(payload, authenticatedPhone) {
          ON CONFLICT(phone) DO UPDATE SET phone=EXCLUDED.phone RETURNING id`,
         [cloudId(member.identityId),phone(member.phone),member.alias]
       )).rows[0];
-      await client.query(
-        `INSERT INTO members(id,group_id,identity_id,alias,state,joined_cycle,exited_cycle) VALUES($1,$2,$3,$4,$5,$6,$7)
-         ON CONFLICT(id) DO UPDATE SET alias=EXCLUDED.alias,state=EXCLUDED.state,exited_cycle=EXCLUDED.exited_cycle`,
-        [mid,groupId,person.id,member.alias,member.state,member.joinedCycle,member.exitedCycle]
-      );
+      const existingMember = (await client.query(
+        'SELECT id, group_id FROM members WHERE id=$1 OR (group_id=$2 AND identity_id=$3)',
+        [mid, groupId, person.id]
+      )).rows[0];
+      if (existingMember) {
+        if (existingMember.group_id !== groupId) throw new Error('Member access denied');
+        memberIdMap[mid] = existingMember.id;
+        await client.query(
+          `UPDATE members SET alias=$1, state=$2, exited_cycle=$3 WHERE id=$4`,
+          [member.alias, member.state, member.exitedCycle, existingMember.id]
+        );
+      } else {
+        memberIdMap[mid] = mid;
+        await client.query(
+          `INSERT INTO members(id,group_id,identity_id,alias,state,joined_cycle,exited_cycle) VALUES($1,$2,$3,$4,$5,$6,$7)
+           ON CONFLICT(id) DO UPDATE SET alias=EXCLUDED.alias,state=EXCLUDED.state,exited_cycle=EXCLUDED.exited_cycle`,
+          [mid,groupId,person.id,member.alias,member.state,member.joinedCycle,member.exitedCycle]
+        );
+      }
     }
     for (const cycle of cycles) {
       if (cloudId(cycle.groupId) !== groupId) throw new Error('Cycle group mismatch');
@@ -91,7 +106,7 @@ async function syncGroup(payload, authenticatedPhone) {
     for (const payment of payments) {
       money(payment.amountPaid);
       if (typeof payment.idempotencyKey !== 'string' || !payment.idempotencyKey) throw new Error('Payment idempotency key required');
-      const pid = cloudId(payment.id), cid = cloudId(payment.cycleId), mid = cloudId(payment.memberId);
+      const pid = cloudId(payment.id), cid = cloudId(payment.cycleId), mid = memberIdMap[cloudId(payment.memberId)] || cloudId(payment.memberId);
       const scope = (await client.query('SELECT c.id FROM cycles c JOIN members m ON m.group_id=c.group_id WHERE c.id=$1 AND m.id=$2 AND c.group_id=$3', [cid,mid,groupId])).rows[0];
       if (!scope) throw new Error('Payment group mismatch');
       const prior = (await client.query('SELECT * FROM payments WHERE idempotency_key=$1 OR id=$2', [payment.idempotencyKey,pid])).rows;

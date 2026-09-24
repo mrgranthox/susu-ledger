@@ -63,6 +63,7 @@ import com.example.data.local.PaymentEntity
 import com.example.ui.theme.BorderGrey
 import com.example.ui.theme.ForestGreenLightFill
 import com.example.ui.theme.ForestGreenPrimary
+import com.example.ui.theme.InputBorderUnfocused
 import com.example.ui.theme.LineIconBlack
 import com.example.ui.theme.LineIconGreen
 import com.example.ui.theme.LineIconGrey
@@ -168,7 +169,7 @@ fun HistoryScreen(
           modifier = Modifier.fillMaxWidth(),
           colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = ForestGreenPrimary,
-            unfocusedBorderColor = BorderGrey,
+            unfocusedBorderColor = InputBorderUnfocused,
             focusedContainerColor = PureWhite,
             unfocusedContainerColor = PureWhite
           ),
@@ -524,7 +525,10 @@ fun HistoryScreen(
               subjectLabel = "SusuLedger_${item.week.replace(" ", "")}_Export.csv"
             )
           },
-          colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+          colors = ButtonDefaults.buttonColors(
+            containerColor = ForestGreenPrimary,
+            contentColor = PureWhite
+          )
         ) {
           Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp), tint = PureWhite)
           Spacer(modifier = Modifier.width(6.dp))

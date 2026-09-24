@@ -72,6 +72,7 @@ import com.example.ui.theme.CashBlueBg
 import com.example.ui.theme.ForestGreenPrimary
 import com.example.ui.theme.MoMoYellow
 import com.example.ui.theme.MoMoYellowBg
+import com.example.ui.theme.PureWhite
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
@@ -104,15 +105,18 @@ fun LedgerScreen(
             Button(
               onClick = onVerifyIntegrityClick,
               shape = RoundedCornerShape(8.dp),
-              colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+              colors = ButtonDefaults.buttonColors(
+                containerColor = ForestGreenPrimary,
+                contentColor = PureWhite
+              ),
               modifier = Modifier.testTag("verify_ledger_button")
             ) {
               if (isVerifying) {
-                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(color = PureWhite, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
               } else {
-                Icon(imageVector = Icons.Default.Shield, contentDescription = null, modifier = Modifier.size(16.dp))
+                Icon(imageVector = Icons.Default.Shield, contentDescription = null, tint = PureWhite, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Verify", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("Verify", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = PureWhite)
               }
             }
           }

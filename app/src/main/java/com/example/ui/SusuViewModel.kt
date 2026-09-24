@@ -62,6 +62,9 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   private val _isAppLocked = MutableStateFlow(sessionManager.isOnboarded && sessionManager.isAppLocked)
   val isAppLocked: StateFlow<Boolean> = _isAppLocked.asStateFlow()
 
+  private val _isBiometricEnabled = MutableStateFlow(sessionManager.isBiometricEnabled)
+  val isBiometricEnabled: StateFlow<Boolean> = _isBiometricEnabled.asStateFlow()
+
   private val _isAuthenticated = MutableStateFlow(sessionManager.isOnboarded && sessionManager.loggedInPhone.isNotBlank())
   val isAuthenticated: StateFlow<Boolean> = _isAuthenticated.asStateFlow()
 
@@ -117,12 +120,8 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     val session = sessionManager.pairingForConnection(phoneNum, groupId, forceNew)
     val newCode = session.code
     _pairingCode.value = newCode
-    _pairingSecondsRemaining.value = 0
-    pairingDeadline = 0
-    if (session.secondsRemaining() <= 0) {
-      _toastMessage.value = "Pairing code expired. Tap Generate new code to start again."
-      return
-    }
+    pairingDeadline = session.expiresAt
+    _pairingSecondsRemaining.value = session.secondsRemaining()
 
     pairingJob = viewModelScope.launch {
       try {
@@ -139,7 +138,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
           error("Unable to check pairing (HTTP ${existing.code()}). Retry with the same code.")
         }
         if (existing.code() == 404) {
-          repository.syncAllOfflineDataToCloud()
+          repository.syncAllOfflineDataToCloud(groupId)
           val response = api.registerPairingCode(
             PairBotRequest(
               code = newCode,
@@ -151,8 +150,6 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         } else if (existing.body()?.status != "PENDING_WHATSAPP_CONFIRMATION") {
           error("This pairing code is no longer active. Generate a new code.")
         }
-        pairingDeadline = session.expiresAt
-        _pairingSecondsRemaining.value = session.secondsRemaining()
         _botConnectionError.value = null
         while (_pairingCode.value == newCode && _pairingSecondsRemaining.value > 0) {
           delay(5000)
@@ -357,6 +354,13 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     _currentSubscreen.value = subscreen
     sessionManager.activeSubscreen = subscreen
     sessionManager.recordActivity()
+    if (subscreen == "whatsapp_bot") {
+      val phone = _userPhone.value
+      val group = _selectedGroupId.value
+      val saved = sessionManager.loadPairing(phone, group)
+      val shouldForce = pairingCompleted || (saved != null && saved.secondsRemaining() <= 0)
+      startPairing(forceNew = shouldForce)
+    }
   }
 
   fun closeSubscreen() {
@@ -450,10 +454,13 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         _pairingSecondsRemaining.value = 0
         _pairingCode.value = ""
         val saved = sessionManager.loadPairing(phone, group)
-        if (phone.isNotBlank() && group.isNotBlank() && saved != null) {
-          // Restore on process recreation, but never silently replace an expired code.
-          _pairingCode.value = saved.code
-          if (saved.secondsRemaining() > 0) startPairing()
+        if (phone.isNotBlank() && group.isNotBlank()) {
+          if (saved != null && saved.secondsRemaining() > 0) {
+            _pairingCode.value = saved.code
+            startPairing()
+          } else {
+            startPairing(forceNew = true)
+          }
         }
       }
     }
@@ -878,7 +885,13 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
 
   fun showPairingSheet(show: Boolean) {
     _showPairingSheet.value = show
-    if (show) startPairing(forceNew = pairingCompleted)
+    if (show) {
+      val phone = _userPhone.value
+      val group = _selectedGroupId.value
+      val saved = sessionManager.loadPairing(phone, group)
+      val shouldForce = pairingCompleted || (saved != null && saved.secondsRemaining() <= 0)
+      startPairing(forceNew = shouldForce)
+    }
   }
 
   fun addNewMember(alias: String, phone: String) {
@@ -1004,6 +1017,23 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     _isAppLocked.value = false
     sessionManager.clearSession()
     _toastMessage.value = "Signed out successfully"
+  }
+
+  fun setBiometricEnabled(enabled: Boolean) {
+    sessionManager.isBiometricEnabled = enabled
+    _isBiometricEnabled.value = enabled
+    _toastMessage.value = if (enabled) "Biometric unlock enabled" else "Biometric unlock disabled"
+  }
+
+  fun updateOfficerPin(newPin: String, onResult: (Boolean, String) -> Unit) {
+    val phone = sessionManager.loggedInPhone.ifBlank {
+      com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.phoneNumber.orEmpty()
+    }
+    if (phone.isBlank()) {
+      onResult(false, "No active session found. Please sign in first.")
+      return
+    }
+    resetOfficerPin(phone, newPin, onResult)
   }
 
   fun beginRegistration() {

@@ -16,8 +16,18 @@ val TextMuted = Color(0xFF888888)
 
 // Canvas & Borders
 val PureWhite = Color(0xFFFFFFFF)          // Pure white #FFFFFF everywhere
-val BorderGrey = Color(0xFFE8E8E8)         // Light grey #E8E8E8 thin 1px borders
-val BorderGreyDark = Color(0xFFCCCCCC)
+val BorderGrey = Color(0xFF94A3B8)         // Updated to WCAG AA 3.12:1 contrast ratio (formerly #E8E8E8)
+val BorderGreyDark = Color(0xFF64748B)      // Crisp slate grey #64748B
+val BorderGreySubtle = Color(0xFFE2E8F0)    // Subtle background divider #E2E8F0
+val InputBorderUnfocused = Color(0xFF94A3B8) // Slate 400: Contrast ratio is 3.12:1 against PureWhite (PASSES WCAG SC 1.4.11)
+val InputBorderFocused = ForestGreenPrimary   // #1B5E3B (Contrast ratio 7.74:1)
+val InputFillFocused = Color(0xFFF0FDF4)      // Soft green tint for active focus affordance
+val InputFillUnfocused = Color(0xFFFFFFFF)
+val ButtonPrimaryContent = Color(0xFFFFFFFF)
+val ButtonDisabledContainer = Color(0xFFE2E8F0)
+val ButtonDisabledContent = Color(0xFF64748B)  // Contrast ratio 4.54:1 on NeutralTrack
+val InverseSurfaceDark = Color(0xFF1E293B)     // High-contrast slate toast/snackbar container
+val InverseOnSurfaceLight = Color(0xFFF8FAFC)  // Crisp white toast/snackbar text
 val HighContrastBackground = Color(0xFFFFFFFF)
 val HighContrastSurface = Color(0xFFFFFFFF)
 

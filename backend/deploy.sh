@@ -12,8 +12,8 @@ SERVICE_NAME="${CLOUD_RUN_SERVICE_NAME:-susu-backend}"
 IMAGE_TAG="gcr.io/${PROJECT_ID}/${SERVICE_NAME}:$(date -u +%Y%m%d%H%M%S)"
 
 # 2. WhatsApp Meta Cloud API Credentials
-META_PHONE_NUMBER_ID="${META_WHATSAPP_PHONE_NUMBER_ID:-}"
-META_WABA_ID="${META_WHATSAPP_BUSINESS_ACCOUNT_ID:-}"
+META_PHONE_NUMBER_ID="${META_WHATSAPP_PHONE_NUMBER_ID:-1419022297952379}"
+META_WABA_ID="${META_WHATSAPP_BUSINESS_ACCOUNT_ID:-1096023279852657}"
 
 # 3. Database & Application Configuration
 DB_HOST="${DB_HOST:-}"
@@ -102,6 +102,10 @@ REDIS_TLS="${REDIS_TLS}" \
   --set-secrets "${SECRET_BINDINGS}" \
   "${CLOUDSQL_ARGS[@]}" \
   "${TRAFFIC_ARGS[@]}"
+
+if [[ "${NO_TRAFFIC:-false}" != "true" ]]; then
+  gcloud run services update-traffic "${SERVICE_NAME}" --to-latest --platform managed --region "${REGION}" --project "${PROJECT_ID}" >/dev/null
+fi
 
 # Step 4: Retrieve public service URL
 SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" --platform managed --region "${REGION}" --project "${PROJECT_ID}" --format="value(status.url)")

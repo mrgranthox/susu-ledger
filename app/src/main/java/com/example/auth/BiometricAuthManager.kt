@@ -53,8 +53,7 @@ class BiometricAuthManager(private val context: Context) {
      */
     fun canAuthenticateBiometrics(context: Context): Boolean {
       val bm = BiometricManager.from(context)
-      val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
-          BiometricManager.Authenticators.BIOMETRIC_WEAK
+      val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG
       return bm.canAuthenticate(authenticators) == BiometricManager.BIOMETRIC_SUCCESS
     }
 
@@ -66,8 +65,7 @@ class BiometricAuthManager(private val context: Context) {
       val km = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
       val bm = BiometricManager.from(context)
 
-      val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
-          BiometricManager.Authenticators.BIOMETRIC_WEAK
+      val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG
       val canBiometric = bm.canAuthenticate(authenticators) == BiometricManager.BIOMETRIC_SUCCESS
       val isDeviceSecure = km?.isDeviceSecure == true
 
@@ -99,8 +97,7 @@ class BiometricAuthManager(private val context: Context) {
     }
 
     val bm = BiometricManager.from(fragmentActivity)
-    val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or
-        BiometricManager.Authenticators.BIOMETRIC_WEAK
+    val authenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG
 
     when (val canAuth = bm.canAuthenticate(authenticators)) {
       BiometricManager.BIOMETRIC_SUCCESS -> {

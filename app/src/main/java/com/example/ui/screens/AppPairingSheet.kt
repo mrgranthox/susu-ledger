@@ -169,7 +169,7 @@ fun AppPairingSheet(
             Spacer(modifier = Modifier.width(12.dp))
 
             IconButton(
-              enabled = secondsRemaining > 0,
+              enabled = pairingCode.isNotBlank(),
               onClick = {
                 clipboard.setText(AnnotatedString("PAIR:$pairingCode"))
                 Toast.makeText(context, "Pairing code copied to clipboard", Toast.LENGTH_SHORT).show()
@@ -197,7 +197,7 @@ fun AppPairingSheet(
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-              text = "Expires in $timeString (15-min TTL)",
+              text = if (secondsRemaining > 0) "Expires in $timeString (15-min TTL)" else "Code expired — tap below to generate a new code",
               style = MaterialTheme.typography.bodySmall.copy(
                 fontWeight = FontWeight.SemiBold,
                 color = DangerRed

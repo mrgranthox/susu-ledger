@@ -43,6 +43,7 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,9 +73,19 @@ fun ReportsSheet(
   stats: DashboardStats,
   cycleNumber: Int,
   payments: List<PaymentEntity>,
+  groupName: String = "Susu Group",
   onDismiss: () -> Unit
 ) {
   val context = LocalContext.current
+
+  val confirmedPayments = remember(payments) { payments.filter { it.status.equals("confirmed", ignoreCase = true) } }
+  val totalPaid = remember(confirmedPayments) { confirmedPayments.sumOf { it.amountPaid }.coerceAtLeast(1.0) }
+  val momoAmount = remember(confirmedPayments) { confirmedPayments.filter { it.method.equals("MOMO", ignoreCase = true) }.sumOf { it.amountPaid } }
+  val cashAmount = remember(confirmedPayments) { confirmedPayments.filter { it.method.equals("CASH", ignoreCase = true) }.sumOf { it.amountPaid } }
+  val agentAmount = remember(confirmedPayments) { confirmedPayments.filter { it.method.equals("AGENT", ignoreCase = true) }.sumOf { it.amountPaid } }
+  val momoPercent = if (confirmedPayments.isEmpty()) 0 else ((momoAmount / totalPaid) * 100).toInt()
+  val cashPercent = if (confirmedPayments.isEmpty()) 0 else ((cashAmount / totalPaid) * 100).toInt()
+  val agentPercent = if (confirmedPayments.isEmpty()) 0 else (100 - momoPercent - cashPercent).coerceAtLeast(0)
 
   ModalBottomSheet(
     onDismissRequest = onDismiss,
@@ -117,7 +128,7 @@ fun ReportsSheet(
             )
           )
           Text(
-            text = "Nima Market Susu • Week $cycleNumber Summary",
+            text = "$groupName • Week $cycleNumber Summary",
             style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary)
           )
         }
@@ -193,11 +204,11 @@ fun ReportsSheet(
         border = androidx.compose.foundation.BorderStroke(1.dp, BorderGrey)
       ) {
         Column(modifier = Modifier.padding(14.dp)) {
-          MethodBar(title = "Mobile Money (MoMo)", percentage = 70, amount = stats.confirmedAmount * 0.7, color = MoMoYellow)
+          MethodBar(title = "Mobile Money (MoMo)", percentage = momoPercent, amount = momoAmount, color = MoMoYellow)
           Spacer(modifier = Modifier.height(10.dp))
-          MethodBar(title = "Cash at Stall", percentage = 20, amount = stats.confirmedAmount * 0.2, color = CashBlue)
+          MethodBar(title = "Cash at Stall", percentage = cashPercent, amount = cashAmount, color = CashBlue)
           Spacer(modifier = Modifier.height(10.dp))
-          MethodBar(title = "Market Agent Deposit", percentage = 10, amount = stats.confirmedAmount * 0.1, color = AgentPurple)
+          MethodBar(title = "Market Agent Deposit", percentage = agentPercent, amount = agentAmount, color = AgentPurple)
         }
       }
 

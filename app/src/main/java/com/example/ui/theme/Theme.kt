@@ -16,8 +16,14 @@ private val LightColorScheme = lightColorScheme(
   surface = PureWhite,
   onBackground = TextPrimary,
   onSurface = TextPrimary,
-  outline = BorderGrey,
-  outlineVariant = BorderGreyDark
+  outline = InputBorderUnfocused,
+  outlineVariant = BorderGreyDark,
+  inverseSurface = InverseSurfaceDark,
+  inverseOnSurface = InverseOnSurfaceLight,
+  error = ErrorRed,
+  onError = Color.White,
+  errorContainer = ErrorBgLight,
+  onErrorContainer = DangerRed
 )
 
 @Composable

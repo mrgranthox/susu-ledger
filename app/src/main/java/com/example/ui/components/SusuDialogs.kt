@@ -8,11 +8,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Contacts
@@ -42,6 +45,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.BorderGrey
 import com.example.ui.theme.ForestGreenPrimary
+import com.example.ui.theme.InputBorderUnfocused
+import com.example.ui.theme.PureWhite
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
@@ -85,10 +90,13 @@ fun NewWeekDialog(
       Button(
         onClick = onConfirm,
         shape = RoundedCornerShape(8.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+        colors = ButtonDefaults.buttonColors(
+          containerColor = ForestGreenPrimary,
+          contentColor = PureWhite
+        ),
         modifier = Modifier.testTag("confirm_new_week_button")
       ) {
-        Text("Start Week ${currentWeekNumber + 1}", fontWeight = FontWeight.Bold)
+        Text("Start Week ${currentWeekNumber + 1}", fontWeight = FontWeight.Bold, color = PureWhite)
       }
     },
     dismissButton = {
@@ -129,7 +137,12 @@ fun AddMemberDialog(
       )
     },
     text = {
-      Column {
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .imePadding()
+          .verticalScroll(rememberScrollState())
+      ) {
         Text(
           text = "Enter the new member details. A Member Equity ledger account will be initialized.",
           style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary)
@@ -165,7 +178,7 @@ fun AddMemberDialog(
           singleLine = true,
           colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = ForestGreenPrimary,
-            unfocusedBorderColor = BorderGrey
+            unfocusedBorderColor = InputBorderUnfocused
           )
         )
 
@@ -184,8 +197,8 @@ fun AddMemberDialog(
           singleLine = true,
           keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
           colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = if (isValidPhone) ForestGreenPrimary else BorderGrey,
-            unfocusedBorderColor = BorderGrey
+            focusedBorderColor = if (isValidPhone) ForestGreenPrimary else InputBorderUnfocused,
+            unfocusedBorderColor = InputBorderUnfocused
           )
         )
 
@@ -208,10 +221,13 @@ fun AddMemberDialog(
           }
         },
         shape = RoundedCornerShape(8.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+        colors = ButtonDefaults.buttonColors(
+          containerColor = ForestGreenPrimary,
+          contentColor = PureWhite
+        ),
         modifier = Modifier.testTag("save_member_button")
       ) {
-        Text("Add Member", fontWeight = FontWeight.Bold)
+        Text("Add Member", fontWeight = FontWeight.Bold, color = PureWhite)
       }
     },
     dismissButton = {

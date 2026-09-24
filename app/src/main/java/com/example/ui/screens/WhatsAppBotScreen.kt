@@ -279,7 +279,7 @@ fun WhatsAppBotScreen(
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                       IconButton(
-                        enabled = pairingSecondsRemaining > 0,
+                        enabled = pairingCode.isNotBlank(),
                         onClick = {
                           clipboard.setText(AnnotatedString("PAIR:$pairingCode"))
                           Toast.makeText(context, "Pairing code copied!", Toast.LENGTH_SHORT).show()
@@ -295,7 +295,7 @@ fun WhatsAppBotScreen(
                       }
 
                       TextButton(
-                        enabled = pairingSecondsRemaining > 0,
+                        enabled = pairingCode.isNotBlank(),
                         onClick = {
                           val intent = Intent(Intent.ACTION_VIEW).apply {
                             data = Uri.parse("https://wa.me/233545908371?text=${Uri.encode("PAIR:$pairingCode")}")

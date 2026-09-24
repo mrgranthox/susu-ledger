@@ -18,12 +18,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material3.Button
@@ -65,6 +69,7 @@ import com.example.data.local.MemberEntity
 import com.example.ui.theme.BorderGrey
 import com.example.ui.theme.ForestGreenLightFill
 import com.example.ui.theme.ForestGreenPrimary
+import com.example.ui.theme.InputBorderUnfocused
 import com.example.ui.theme.LineIconBlack
 import com.example.ui.theme.LineIconGreen
 import com.example.ui.theme.LineIconGrey
@@ -129,6 +134,8 @@ fun ConfirmPaymentSheet(
       modifier = Modifier
         .fillMaxWidth()
         .background(PureWhite)
+        .imePadding()
+        .verticalScroll(rememberScrollState())
         .padding(horizontal = 24.dp, vertical = 8.dp)
         .padding(bottom = 36.dp)
     ) {
@@ -153,15 +160,33 @@ fun ConfirmPaymentSheet(
       Spacer(modifier = Modifier.height(20.dp))
 
       androidx.compose.foundation.layout.Box {
-        androidx.compose.material3.TextButton(onClick = { weekDropdownExpanded = true }, enabled = initialClaim == null) {
-          Text("Week $cycleNumber" + if (availableCycles.find { it.id == selectedCycleId }?.state == "closed") " - late payment" else "")
+        androidx.compose.material3.TextButton(
+          onClick = { weekDropdownExpanded = true },
+          enabled = initialClaim == null
+        ) {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+              text = "Week $cycleNumber" + if (availableCycles.find { it.id == selectedCycleId }?.state == "closed") " - late payment" else "",
+              fontWeight = FontWeight.SemiBold,
+              color = ForestGreenPrimary
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Icon(
+              imageVector = Icons.Default.ArrowDropDown,
+              contentDescription = "Select week",
+              tint = ForestGreenPrimary
+            )
+          }
         }
         androidx.compose.material3.DropdownMenu(expanded = weekDropdownExpanded, onDismissRequest = { weekDropdownExpanded = false }) {
           availableCycles.sortedByDescending { it.number }.forEach { week ->
-            androidx.compose.material3.DropdownMenuItem(text = { Text("Week ${week.number}" + if (week.state == "closed") " - late payment" else "") }, onClick = {
-              onSelectCycle(week)
-              weekDropdownExpanded = false
-            })
+            androidx.compose.material3.DropdownMenuItem(
+              text = { Text("Week ${week.number}" + if (week.state == "closed") " - late payment" else "") },
+              onClick = {
+                onSelectCycle(week)
+                weekDropdownExpanded = false
+              }
+            )
           }
         }
       }
@@ -218,7 +243,7 @@ fun ConfirmPaymentSheet(
         singleLine = true,
         colors = OutlinedTextFieldDefaults.colors(
           focusedBorderColor = ForestGreenPrimary,
-          unfocusedBorderColor = BorderGrey,
+          unfocusedBorderColor = InputBorderUnfocused,
           focusedContainerColor = PureWhite,
           unfocusedContainerColor = PureWhite
         ),
@@ -227,18 +252,25 @@ fun ConfirmPaymentSheet(
 
       Spacer(modifier = Modifier.height(10.dp))
 
-      // Quick Installment Chips ("Small Small" micro-payments)
+      // Dynamic Quick Installment Chips ("Small Small" micro-payments)
+      val quickChips = remember(cycleDueAmount) {
+        val full = cycleDueAmount.toInt()
+        val half = (cycleDueAmount / 2).toInt()
+        val quarter = (cycleDueAmount / 4).toInt()
+        val list = mutableListOf<Pair<String, String>>()
+        list.add("Full (GHS $full)" to full.toString())
+        if (half > 0 && half != full) list.add("1/2 (GHS $half)" to half.toString())
+        if (quarter > 0 && quarter != half && quarter != full) list.add("1/4 (GHS $quarter)" to quarter.toString())
+        if (10 < full && 10 != half && 10 != quarter) list.add("GHS 10" to "10")
+        if (20 < full && 20 != half && 20 != quarter && 20 != 10) list.add("GHS 20" to "20")
+        list.take(5)
+      }
+
       Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp)
       ) {
-        listOf(
-          "Full (GHS ${cycleDueAmount.toInt()})" to cycleDueAmount.toInt().toString(),
-          "GHS 10" to "10",
-          "GHS 20" to "20",
-          "GHS 25" to "25",
-          "GHS 50" to "50"
-        ).forEach { (label, value) ->
+        quickChips.forEach { (label, value) ->
           val isSelected = amountText == value
           Surface(
             modifier = Modifier
@@ -314,7 +346,7 @@ fun ConfirmPaymentSheet(
               .fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
               focusedBorderColor = ForestGreenPrimary,
-              unfocusedBorderColor = BorderGrey,
+              unfocusedBorderColor = InputBorderUnfocused,
               focusedContainerColor = PureWhite,
               unfocusedContainerColor = PureWhite
             ),
@@ -455,7 +487,10 @@ fun ConfirmPaymentSheet(
           .height(52.dp)
           .testTag("confirm_payment_btn"),
         shape = RoundedCornerShape(8.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+        colors = ButtonDefaults.buttonColors(
+          containerColor = ForestGreenPrimary,
+          contentColor = PureWhite
+        )
       ) {
         Text(
           text = "Confirm",

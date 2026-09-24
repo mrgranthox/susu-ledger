@@ -32,9 +32,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -145,6 +147,7 @@ class MainActivity : FragmentActivity() {
         // Persistent Navigation & Subscreen state managed by ViewModel and DataStore/SessionManager
         val currentNavIndex by viewModel.currentNavIndex.collectAsState()
         val currentSubscreen by viewModel.currentSubscreen.collectAsState()
+        val isBiometricEnabled by viewModel.isBiometricEnabled.collectAsState()
 
         // Unauthenticated Onboarding Flow Stages: Splash -> Walkthrough -> Setup / Login
         // Note: For returning authenticated officers, we never block them with the splash screen
@@ -425,7 +428,16 @@ class MainActivity : FragmentActivity() {
               else -> {
                 Scaffold(
                   containerColor = PureWhite,
-                  snackbarHost = { SnackbarHost(snackbarHostState) },
+                  snackbarHost = {
+                    SnackbarHost(snackbarHostState) { data ->
+                      Snackbar(
+                        snackbarData = data,
+                        containerColor = MaterialTheme.colorScheme.inverseSurface,
+                        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                        shape = RoundedCornerShape(10.dp)
+                      )
+                    }
+                  },
                   bottomBar = {
                     Surface(
                       color = PureWhite,
@@ -567,7 +579,8 @@ class MainActivity : FragmentActivity() {
                         onLockApp = { viewModel.lockApp() },
                         onSignOut = {
                           viewModel.logout()
-                          showSplashScreen = true
+                          showLoginScreen = true
+                          showSplashScreen = false
                           showWalkthroughScreen = false
                         }
                       )
@@ -595,6 +608,11 @@ class MainActivity : FragmentActivity() {
                         groupName = currentGroupName,
                         currentGroup = currentGroup,
                         activeCycle = activeCycle,
+                        isBiometricEnabled = isBiometricEnabled,
+                        onUpdateBiometricEnabled = { viewModel.setBiometricEnabled(it) },
+                        onChangePin = { newPin, onResult ->
+                          viewModel.updateOfficerPin(newPin, onResult)
+                        },
                         onTogglePauseGroup = { reason -> viewModel.togglePauseGroup(reason) },
                         onUpdateContributionAmount = { newAmt, applyCurrent, reason ->
                           viewModel.updateContributionAmount(newAmt, applyCurrent, reason)
@@ -604,7 +622,8 @@ class MainActivity : FragmentActivity() {
                         onOpenWhatsAppSimulator = { viewModel.openSubscreen("whatsapp_bot") },
                         onSignOut = {
                           viewModel.logout()
-                          showSplashScreen = true
+                          showLoginScreen = true
+                          showSplashScreen = false
                           showWalkthroughScreen = false
                         },
                         onDeleteAccount = {
@@ -660,6 +679,7 @@ class MainActivity : FragmentActivity() {
                 stats = stats,
                 cycleNumber = activeCycle?.number ?: 1,
                 payments = payments,
+                groupName = currentGroupName,
                 onDismiss = { viewModel.showReportsSheet(false) }
               )
             }

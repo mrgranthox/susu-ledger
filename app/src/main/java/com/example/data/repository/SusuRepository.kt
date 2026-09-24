@@ -98,13 +98,25 @@ class SusuRepository(private val database: SusuDatabase) {
     }
   }
 
-  suspend fun syncAllOfflineDataToCloud(): Int {
+  suspend fun syncAllOfflineDataToCloud(targetGroupId: String? = null): Int {
     hasPendingCloudMessages = false
     var uploaded = 0
     // Resend all payments to recover records falsely marked synced by older versions.
     // The server checks immutable payment IDs and idempotency keys on every retry.
+    val currentUserPhone = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.phoneNumber
     val allPayments = dao.getAllPaymentsOnce()
-    for (group in dao.getAllGroupsOnce()) {
+    val allGroups = dao.getAllGroupsOnce()
+    val groupsToSync = allGroups.filter { group ->
+      if (targetGroupId != null) group.id == targetGroupId
+      else if (currentUserPhone.isNullOrBlank()) true
+      else {
+        val treasurer = dao.getIdentityById(group.treasurerId)
+        val normalizedTreasurer = treasurer?.phone?.let { runCatching { com.example.util.GhanaPhoneUtils.toE164(it) }.getOrNull() }
+        val normalizedUser = runCatching { com.example.util.GhanaPhoneUtils.toE164(currentUserPhone) }.getOrNull()
+        normalizedTreasurer == normalizedUser
+      }
+    }
+    for (group in groupsToSync) {
       val treasurer = dao.getIdentityById(group.treasurerId)
         ?: error("Group treasurer is missing")
       val cycles = dao.getAllCyclesOnce(group.id).map { cycle ->

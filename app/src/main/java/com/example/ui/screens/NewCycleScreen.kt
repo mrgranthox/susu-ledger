@@ -11,10 +11,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Button
@@ -45,6 +48,7 @@ import com.example.ui.theme.HeroAmber
 import com.example.ui.theme.HeroAmberBg
 import com.example.ui.theme.HeroAmberBorder
 import com.example.ui.theme.HeroAmberText
+import com.example.ui.theme.InputBorderUnfocused
 import com.example.ui.theme.PureWhite
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
@@ -80,6 +84,8 @@ fun NewCycleScreen(
         .fillMaxSize()
         .background(PureWhite)
         .padding(paddingValues)
+        .imePadding()
+        .verticalScroll(rememberScrollState())
         .padding(horizontal = 24.dp, vertical = 16.dp),
       verticalArrangement = Arrangement.SpaceBetween
     ) {
@@ -96,7 +102,7 @@ fun NewCycleScreen(
           shape = RoundedCornerShape(8.dp),
           colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = ForestGreenPrimary,
-            unfocusedBorderColor = BorderGrey,
+            unfocusedBorderColor = InputBorderUnfocused,
             focusedContainerColor = PureWhite,
             unfocusedContainerColor = PureWhite
           )
@@ -114,7 +120,7 @@ fun NewCycleScreen(
           shape = RoundedCornerShape(8.dp),
           colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = ForestGreenPrimary,
-            unfocusedBorderColor = BorderGrey,
+            unfocusedBorderColor = InputBorderUnfocused,
             focusedContainerColor = PureWhite,
             unfocusedContainerColor = PureWhite
           )
@@ -132,7 +138,7 @@ fun NewCycleScreen(
           shape = RoundedCornerShape(8.dp),
           colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = ForestGreenPrimary,
-            unfocusedBorderColor = BorderGrey,
+            unfocusedBorderColor = InputBorderUnfocused,
             focusedContainerColor = PureWhite,
             unfocusedContainerColor = PureWhite
           )
@@ -185,7 +191,10 @@ fun NewCycleScreen(
             .height(52.dp)
             .testTag("open_week_btn"),
           shape = RoundedCornerShape(8.dp),
-          colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+          colors = ButtonDefaults.buttonColors(
+            containerColor = ForestGreenPrimary,
+            contentColor = PureWhite
+          )
         ) {
           Text(
             text = "Open Week & Notify Everyone",

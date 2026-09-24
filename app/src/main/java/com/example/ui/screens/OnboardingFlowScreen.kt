@@ -18,6 +18,7 @@ import android.provider.ContactsContract
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -105,13 +106,27 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-import androidx.core.content.ContextCompat
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import com.example.service.FirebaseAuthService
 import com.example.ui.components.AppLogoBadge
 import com.example.ui.theme.BorderGrey
+import com.example.ui.theme.ButtonDisabledContainer
+import com.example.ui.theme.ButtonDisabledContent
+import com.example.ui.theme.ButtonPrimaryContent
 import com.example.ui.theme.ErrorRed
 import com.example.ui.theme.ForestGreenLightFill
 import com.example.ui.theme.ForestGreenPrimary
+import com.example.ui.theme.InputBorderFocused
+import com.example.ui.theme.InputBorderUnfocused
+import com.example.ui.theme.InputFillFocused
+import com.example.ui.theme.InputFillUnfocused
 import com.example.ui.theme.LineIconBlack
 import com.example.ui.theme.LineIconGreen
 import com.example.ui.theme.PureWhite
@@ -130,7 +145,8 @@ fun OnboardingFlowScreen(
   onCompleteOnboarding: (groupName: String, amount: Double, treasurerPhone: String, treasurerName: String, members: List<SetupMemberItem>, treasurerPin: String, schedule: String) -> Unit,
   onSwitchToLogin: () -> Unit
 ) {
-  var currentStep by remember { mutableStateOf(1) } // 1..6
+  var currentStep by remember { mutableStateOf(1) } // 1..7
+  val focusManager = LocalFocusManager.current
 
   // State across steps
   var treasurerPhone by remember { mutableStateOf("") }
@@ -150,10 +166,14 @@ fun OnboardingFlowScreen(
       .background(PureWhite)
       .statusBarsPadding()
       .navigationBarsPadding()
+      .imePadding()
+      .pointerInput(Unit) {
+        detectTapGestures(onTap = { focusManager.clearFocus() })
+      }
       .padding(horizontal = 24.dp, vertical = 16.dp),
     horizontalAlignment = Alignment.CenterHorizontally
   ) {
-    // Step Indicator (steps 2 to 6)
+    // Step Indicator (steps 2 to 7)
     if (currentStep > 1) {
       Row(
         modifier = Modifier
@@ -163,7 +183,7 @@ fun OnboardingFlowScreen(
         verticalAlignment = Alignment.CenterVertically
       ) {
         Text(
-          text = "Step $currentStep of 6",
+          text = "Step $currentStep of 7",
           style = MaterialTheme.typography.labelSmall.copy(color = TextSecondary, fontWeight = FontWeight.SemiBold)
         )
         TextButton(
@@ -222,18 +242,35 @@ fun OnboardingFlowScreen(
           treasurerName = treasurerName,
           treasurerPhone = treasurerPhone,
           memberCount = memberList.size,
+          onEditGroup = { currentStep = 3 },
+          onEditMembers = { currentStep = 4 },
           onContinue = { currentStep = 6 }
         )
         6 -> Step6SecurityPin(
           treasurerPin = treasurerPin,
           onTreasurerPinChange = { treasurerPin = it },
-          onContinue = {
-            val amtNum = contributionAmount.replace("GHS", "").trim().toDoubleOrNull() ?: 50.0
-            val resolvedTreasurerName = if (treasurerName.isNotBlank()) treasurerName.trim() else "Ama Mensah"
-            val resolvedGroupName = if (groupName.isNotBlank()) groupName.trim() else "Nima Market Susu"
-            onCompleteOnboarding(resolvedGroupName, amtNum, treasurerPhone, resolvedTreasurerName, memberList, treasurerPin, collectionFrequency)
-          }
+          onContinue = { currentStep = 7 }
         )
+        7 -> {
+          val amtNum = contributionAmount.replace("GHS", "").replace(",", "").trim().toDoubleOrNull() ?: 50.0
+          val code = if (pairingCode.isNotBlank()) pairingCode else "SL-${treasurerPhone.takeLast(4)}"
+          Step7ConnectBot(
+            pairingCode = code,
+            treasurerName = treasurerName.trim(),
+            groupName = groupName.trim(),
+            onFinish = {
+              onCompleteOnboarding(
+                groupName.trim(),
+                amtNum,
+                treasurerPhone,
+                treasurerName.trim(),
+                memberList,
+                treasurerPin,
+                collectionFrequency
+              )
+            }
+          )
+        }
       }
     }
   }
@@ -391,6 +428,7 @@ private fun Step2PhoneOtp(
   var smsStatusMsg by remember { mutableStateOf<String?>(null) }
   var smsErrorMsg by remember { mutableStateOf<String?>(null) }
 
+  var isPhoneFocused by remember { mutableStateOf(false) }
   val sanitized9Digits = remember(phone) { GhanaPhoneUtils.sanitizeTo9Digits(phone) }
   val isValidPhone = remember(sanitized9Digits) { GhanaPhoneUtils.isValidGhanaPhone(sanitized9Digits) }
   val (_, statusMsg) = remember(sanitized9Digits) { GhanaPhoneUtils.getValidationStatus(sanitized9Digits) }
@@ -436,8 +474,8 @@ private fun Step2PhoneOtp(
           singleLine = true,
           colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = ForestGreenPrimary,
-            unfocusedBorderColor = BorderGrey,
-            focusedContainerColor = PureWhite,
+            unfocusedBorderColor = InputBorderUnfocused,
+            focusedContainerColor = InputFillFocused,
             unfocusedContainerColor = PureWhite
           ),
           shape = RoundedCornerShape(8.dp)
@@ -452,9 +490,10 @@ private fun Step2PhoneOtp(
           modifier = Modifier
             .fillMaxWidth()
             .height(54.dp)
+            .background(if (isPhoneFocused) InputFillFocused else PureWhite, RoundedCornerShape(8.dp))
             .border(
-              width = if (isValidPhone) 1.5.dp else 1.dp,
-              color = if (isValidPhone) ForestGreenPrimary else BorderGrey,
+              width = if (isPhoneFocused) 2.dp else 1.5.dp,
+              color = if (isPhoneFocused) ForestGreenPrimary else if (isValidPhone) SuccessGreen else InputBorderUnfocused,
               shape = RoundedCornerShape(8.dp)
             )
             .padding(horizontal = 14.dp),
@@ -480,7 +519,7 @@ private fun Step2PhoneOtp(
             )
           )
           Spacer(modifier = Modifier.width(10.dp))
-          Box(modifier = Modifier.width(1.dp).height(24.dp).background(BorderGrey))
+          Box(modifier = Modifier.width(1.dp).height(24.dp).background(InputBorderUnfocused))
           Spacer(modifier = Modifier.width(10.dp))
           BasicTextField(
             value = sanitized9Digits,
@@ -495,7 +534,10 @@ private fun Step2PhoneOtp(
               fontWeight = FontWeight.Medium,
               letterSpacing = 1.sp
             ),
-            modifier = Modifier.weight(1f).testTag("onboarding_phone_input")
+            modifier = Modifier
+              .weight(1f)
+              .onFocusChanged { isPhoneFocused = it.isFocused }
+              .testTag("onboarding_phone_input")
           )
 
           if (sanitized9Digits.isNotEmpty()) {
@@ -554,11 +596,11 @@ private fun Step2PhoneOtp(
                 modifier = Modifier
                   .size(46.dp, 52.dp)
                   .border(
-                    width = 1.dp,
-                    color = if (isFocused) ForestGreenPrimary else BorderGrey,
+                    width = if (isFocused) 2.dp else 1.5.dp,
+                    color = if (isFocused) ForestGreenPrimary else InputBorderUnfocused,
                     shape = RoundedCornerShape(8.dp)
                   )
-                  .background(PureWhite),
+                  .background(if (isFocused) InputFillFocused else PureWhite),
                 contentAlignment = Alignment.Center
               ) {
                 Text(
@@ -726,7 +768,9 @@ private fun Step2PhoneOtp(
         shape = RoundedCornerShape(8.dp),
         colors = ButtonDefaults.buttonColors(
           containerColor = ForestGreenPrimary,
-          disabledContainerColor = NeutralTrack
+          contentColor = PureWhite,
+          disabledContainerColor = ButtonDisabledContainer,
+          disabledContentColor = ButtonDisabledContent
         )
       ) {
         if (isSendingSms || isVerifyingCode) {
@@ -779,13 +823,13 @@ private fun Step3CreateGroup(
       OutlinedTextField(
         value = groupName,
         onValueChange = onGroupNameChange,
-        placeholder = { Text("e.g. Nima Market Susu") },
+        placeholder = { Text("e.g. Makola Market Women Susu") },
         modifier = Modifier.fillMaxWidth().testTag("onboarding_group_name_input"),
         singleLine = true,
         colors = OutlinedTextFieldDefaults.colors(
           focusedBorderColor = ForestGreenPrimary,
-          unfocusedBorderColor = BorderGrey,
-          focusedContainerColor = PureWhite,
+          unfocusedBorderColor = InputBorderUnfocused,
+          focusedContainerColor = InputFillFocused,
           unfocusedContainerColor = PureWhite
         ),
         shape = RoundedCornerShape(8.dp)
@@ -799,14 +843,14 @@ private fun Step3CreateGroup(
       OutlinedTextField(
         value = amount,
         onValueChange = onAmountChange,
-        placeholder = { Text("GHS 50") },
+        placeholder = { Text("50") },
         prefix = { Text("GHS ", fontWeight = FontWeight.Bold, color = ForestGreenPrimary) },
         modifier = Modifier.fillMaxWidth().testTag("onboarding_amount_input"),
         singleLine = true,
         colors = OutlinedTextFieldDefaults.colors(
           focusedBorderColor = ForestGreenPrimary,
-          unfocusedBorderColor = BorderGrey,
-          focusedContainerColor = PureWhite,
+          unfocusedBorderColor = InputBorderUnfocused,
+          focusedContainerColor = InputFillFocused,
           unfocusedContainerColor = PureWhite
         ),
         shape = RoundedCornerShape(8.dp)
@@ -826,7 +870,7 @@ private fun Step3CreateGroup(
               .clickable { onAmountChange(preset) },
             shape = RoundedCornerShape(6.dp),
             color = if (isSelected) ForestGreenLightFill else NeutralSurfaceLight,
-            border = BorderStroke(1.dp, if (isSelected) ForestGreenPrimary else BorderGrey)
+            border = BorderStroke(1.dp, if (isSelected) ForestGreenPrimary else InputBorderUnfocused)
           ) {
             Box(modifier = Modifier.padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
               Text("GHS $preset", fontSize = 11.sp, color = if (isSelected) ForestGreenPrimary else TextPrimary, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
@@ -852,7 +896,7 @@ private fun Step3CreateGroup(
               .height(48.dp)
               .border(
                 width = 1.dp,
-                color = if (isSelected) ForestGreenPrimary else BorderGrey,
+                color = if (isSelected) ForestGreenPrimary else InputBorderUnfocused,
                 shape = RoundedCornerShape(8.dp)
               )
               .background(
@@ -881,10 +925,13 @@ private fun Step3CreateGroup(
       )
     }
 
+    val parsedAmt = amount.replace("GHS", "").replace(",", "").trim().toDoubleOrNull()
+    val isStep3Valid = groupName.trim().isNotBlank() && parsedAmt != null && parsedAmt > 0
+
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp)) {
       Button(
         onClick = onContinue,
-        enabled = groupName.isNotBlank() && amount.isNotBlank(),
+        enabled = isStep3Valid,
         modifier = Modifier
           .fillMaxWidth()
           .height(52.dp)
@@ -892,10 +939,18 @@ private fun Step3CreateGroup(
         shape = RoundedCornerShape(8.dp),
         colors = ButtonDefaults.buttonColors(
           containerColor = ForestGreenPrimary,
-          disabledContainerColor = NeutralTrack
+          contentColor = PureWhite,
+          disabledContainerColor = ButtonDisabledContainer,
+          disabledContentColor = ButtonDisabledContent
         )
       ) {
-        Text("Continue to Add Members", style = MaterialTheme.typography.labelLarge.copy(color = PureWhite))
+        Text(
+          "Continue to Add Members",
+          style = MaterialTheme.typography.labelLarge.copy(
+            color = if (isStep3Valid) PureWhite else ButtonDisabledContent,
+            fontWeight = FontWeight.Bold
+          )
+        )
       }
     }
   }
@@ -1024,7 +1079,7 @@ private fun Step4AddMembers(
       Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(1.dp, BorderGrey),
+        border = BorderStroke(1.dp, InputBorderUnfocused),
         color = NeutralSurfaceLight
       ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1039,9 +1094,9 @@ private fun Step4AddMembers(
             singleLine = true,
             shape = RoundedCornerShape(6.dp),
             colors = OutlinedTextFieldDefaults.colors(
-              unfocusedBorderColor = BorderGrey,
+              unfocusedBorderColor = InputBorderUnfocused,
               focusedBorderColor = ForestGreenPrimary,
-              focusedContainerColor = PureWhite,
+              focusedContainerColor = InputFillFocused,
               unfocusedContainerColor = PureWhite
             )
           )
@@ -1061,9 +1116,9 @@ private fun Step4AddMembers(
               shape = RoundedCornerShape(6.dp),
               keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
               colors = OutlinedTextFieldDefaults.colors(
-                unfocusedBorderColor = BorderGrey,
+                unfocusedBorderColor = InputBorderUnfocused,
                 focusedBorderColor = ForestGreenPrimary,
-                focusedContainerColor = PureWhite,
+                focusedContainerColor = InputFillFocused,
                 unfocusedContainerColor = PureWhite
               )
             )
@@ -1079,10 +1134,15 @@ private fun Step4AddMembers(
               },
               enabled = newName.isNotBlank() && GhanaPhoneUtils.isValidGhanaPhone(sanitizedPhone),
               shape = RoundedCornerShape(6.dp),
-              colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+              colors = ButtonDefaults.buttonColors(
+                containerColor = ForestGreenPrimary,
+                contentColor = PureWhite,
+                disabledContainerColor = ButtonDisabledContainer,
+                disabledContentColor = ButtonDisabledContent
+              ),
               modifier = Modifier.height(50.dp).testTag("add_member_submit_btn")
             ) {
-              Text("Add", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+              Text("Add", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = PureWhite)
             }
           }
         }
@@ -1090,12 +1150,11 @@ private fun Step4AddMembers(
 
       Spacer(modifier = Modifier.height(14.dp))
 
-      // Member list
-      val displayMembers = members.take(4)
+      // Member list - Full display without arbitrary 4-item truncation
       Column(
         modifier = Modifier
           .fillMaxWidth()
-          .border(1.dp, BorderGrey, RoundedCornerShape(8.dp))
+          .border(1.dp, InputBorderUnfocused, RoundedCornerShape(8.dp))
           .padding(8.dp)
       ) {
         if (members.isEmpty()) {
@@ -1105,7 +1164,7 @@ private fun Step4AddMembers(
             modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp)
           )
         } else {
-          displayMembers.forEach { member ->
+          members.forEach { member ->
             Row(
               modifier = Modifier
                 .fillMaxWidth()
@@ -1137,17 +1196,6 @@ private fun Step4AddMembers(
               }
             }
           }
-
-          if (members.size > 4) {
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-              text = "Showing 4 of ${members.size} members — Tap to View All",
-              style = MaterialTheme.typography.labelMedium.copy(color = ForestGreenPrimary, fontWeight = FontWeight.SemiBold),
-              modifier = Modifier
-                .clickable { showAllMembersDialog = true }
-                .padding(vertical = 4.dp)
-            )
-          }
         }
       }
     }
@@ -1163,13 +1211,16 @@ private fun Step4AddMembers(
         shape = RoundedCornerShape(8.dp),
         colors = ButtonDefaults.buttonColors(
           containerColor = ForestGreenPrimary,
-          disabledContainerColor = NeutralTrack
+          contentColor = PureWhite,
+          disabledContainerColor = ButtonDisabledContainer,
+          disabledContentColor = ButtonDisabledContent
         )
       ) {
         Text(
           text = if (members.isNotEmpty()) "Continue (${members.size} Members)" else "Add At Least 1 Member to Continue",
           style = MaterialTheme.typography.labelLarge.copy(
-            color = if (members.isNotEmpty()) PureWhite else TextSecondary
+            color = if (members.isNotEmpty()) PureWhite else ButtonDisabledContent,
+            fontWeight = FontWeight.Bold
           )
         )
       }
@@ -1527,6 +1578,8 @@ private fun Step5ReviewGroup(
   treasurerName: String,
   treasurerPhone: String,
   memberCount: Int,
+  onEditGroup: () -> Unit = {},
+  onEditMembers: () -> Unit = {},
   onContinue: () -> Unit
 ) {
   val cleanPhone = if (treasurerPhone.isNotBlank()) "+233 ${GhanaPhoneUtils.sanitizeTo9Digits(treasurerPhone)}" else "+233 24 000 0000"
@@ -1558,17 +1611,17 @@ private fun Step5ReviewGroup(
       Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = PureWhite),
-        border = BorderStroke(1.dp, BorderGrey),
+        border = BorderStroke(1.dp, InputBorderUnfocused),
         shape = RoundedCornerShape(12.dp)
       ) {
         Column(modifier = Modifier.padding(20.dp)) {
-          ReviewRow(label = "Group Name", value = groupName.ifBlank { "Nima Market Susu" })
+          ReviewRow(label = "Group Name", value = groupName, onEdit = onEditGroup)
           Spacer(modifier = Modifier.height(14.dp))
-          ReviewRow(label = "Contribution Rate", value = "${amount.ifBlank { "GHS 50" }} (${frequency.lowercase()})")
+          ReviewRow(label = "Contribution Rate", value = "${amount} (${frequency.lowercase()})", onEdit = onEditGroup)
           Spacer(modifier = Modifier.height(14.dp))
           ReviewRow(label = "Treasurer / Group Leader", value = "$cleanName ($cleanPhone)")
           Spacer(modifier = Modifier.height(14.dp))
-          ReviewRow(label = "Registered Members", value = "$memberCount members ready for WhatsApp onboarding")
+          ReviewRow(label = "Registered Members", value = "$memberCount members ready for WhatsApp onboarding", onEdit = onEditMembers)
         }
       }
 
@@ -1583,7 +1636,10 @@ private fun Step5ReviewGroup(
           .height(52.dp)
           .testTag("review_continue_to_pin_btn"),
         shape = RoundedCornerShape(8.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+        colors = ButtonDefaults.buttonColors(
+          containerColor = ForestGreenPrimary,
+          contentColor = PureWhite
+        )
       ) {
         Text("Confirm & Set Security PIN", fontSize = 15.sp, color = PureWhite, fontWeight = FontWeight.Bold)
       }
@@ -1592,11 +1648,22 @@ private fun Step5ReviewGroup(
 }
 
 @Composable
-private fun ReviewRow(label: String, value: String) {
-  Column {
-    Text(label, style = MaterialTheme.typography.labelSmall.copy(color = TextSecondary, fontWeight = FontWeight.SemiBold))
-    Spacer(modifier = Modifier.height(2.dp))
-    Text(value, style = MaterialTheme.typography.bodyLarge.copy(color = TextPrimary, fontWeight = FontWeight.SemiBold))
+private fun ReviewRow(label: String, value: String, onEdit: (() -> Unit)? = null) {
+  Row(
+    modifier = Modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically
+  ) {
+    Column(modifier = Modifier.weight(1f)) {
+      Text(label, style = MaterialTheme.typography.labelSmall.copy(color = TextSecondary, fontWeight = FontWeight.SemiBold))
+      Spacer(modifier = Modifier.height(2.dp))
+      Text(value, style = MaterialTheme.typography.bodyLarge.copy(color = TextPrimary, fontWeight = FontWeight.SemiBold))
+    }
+    if (onEdit != null) {
+      IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+        Icon(Icons.Default.Edit, contentDescription = "Edit $label", tint = ForestGreenPrimary, modifier = Modifier.size(18.dp))
+      }
+    }
   }
 }
 
@@ -1608,19 +1675,36 @@ private fun PinBoxRow(
   pinValue: String,
   onPinChange: (String) -> Unit,
   label: String,
+  isError: Boolean = false,
+  isPinVisible: Boolean = false,
+  onToggleVisibility: () -> Unit = {},
   focusRequester: FocusRequester = remember { FocusRequester() },
   testTagPrefix: String = "pin_box"
 ) {
   Column(modifier = Modifier.fillMaxWidth()) {
-    Text(
-      text = label,
-      style = MaterialTheme.typography.labelLarge.copy(
-        fontWeight = FontWeight.Bold,
-        color = TextPrimary
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      Text(
+        text = label,
+        style = MaterialTheme.typography.labelLarge.copy(
+          fontWeight = FontWeight.Bold,
+          color = TextPrimary
+        )
       )
-    )
+      IconButton(onClick = onToggleVisibility) {
+        Icon(
+          imageVector = if (isPinVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+          contentDescription = if (isPinVisible) "Hide PIN digits" else "Show PIN digits",
+          tint = ForestGreenPrimary,
+          modifier = Modifier.size(20.dp)
+        )
+      }
+    }
 
-    Spacer(modifier = Modifier.height(10.dp))
+    Spacer(modifier = Modifier.height(8.dp))
 
     Box(
       modifier = Modifier
@@ -1637,50 +1721,73 @@ private fun PinBoxRow(
         },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
         modifier = Modifier
+          .fillMaxWidth()
           .focusRequester(focusRequester)
-          .alpha(0.01f)
-          .testTag("${testTagPrefix}_input")
-      )
-
-      Row(
-        horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        (0 until 4).forEach { index ->
-          val char = pinValue.getOrNull(index)
-          val isFilled = char != null
-          val isCurrent = pinValue.length == index || (pinValue.length == 4 && index == 3)
-
-          Box(
-            modifier = Modifier
-              .size(width = 62.dp, height = 64.dp)
-              .clip(RoundedCornerShape(12.dp))
-              .background(if (isFilled) ForestGreenLightFill else PureWhite)
-              .border(
-                width = if (isCurrent) 2.dp else 1.dp,
-                color = if (isCurrent) ForestGreenPrimary else BorderGrey,
-                shape = RoundedCornerShape(12.dp)
-              ),
-            contentAlignment = Alignment.Center
+          .testTag("${testTagPrefix}_input"),
+        decorationBox = {
+          Row(
+            horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
           ) {
-            if (isFilled) {
+            (0 until 4).forEach { index ->
+              val char = pinValue.getOrNull(index)
+              val isFilled = char != null
+              val isCurrent = (pinValue.length == index)
+
               Box(
                 modifier = Modifier
-                  .size(16.dp)
-                  .clip(CircleShape)
-                  .background(ForestGreenPrimary)
-              )
-            } else {
-              Text(
-                text = "—",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Light,
-                color = TextSecondary
-              )
+                  .size(width = 62.dp, height = 64.dp)
+                  .clip(RoundedCornerShape(12.dp))
+                  .background(
+                    if (isError) DangerRedBg
+                    else if (isFilled) ForestGreenLightFill
+                    else if (isCurrent) InputFillFocused
+                    else PureWhite
+                  )
+                  .border(
+                    width = if (isError || isCurrent) 2.dp else 1.5.dp,
+                    color = if (isError) ErrorRed else if (isCurrent) ForestGreenPrimary else InputBorderUnfocused,
+                    shape = RoundedCornerShape(12.dp)
+                  ),
+                contentAlignment = Alignment.Center
+              ) {
+                if (isFilled) {
+                  if (isPinVisible) {
+                    Text(
+                      text = char.toString(),
+                      fontSize = 22.sp,
+                      fontWeight = FontWeight.Bold,
+                      color = if (isError) ErrorRed else TextPrimary
+                    )
+                  } else {
+                    Box(
+                      modifier = Modifier
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .background(if (isError) ErrorRed else ForestGreenPrimary)
+                    )
+                  }
+                } else if (isCurrent) {
+                  Box(
+                    modifier = Modifier
+                      .width(2.dp)
+                      .height(24.dp)
+                      .background(ForestGreenPrimary)
+                  )
+                } else {
+                  Text(
+                    text = "—",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Light,
+                    color = InputBorderUnfocused
+                  )
+                }
+              }
             }
           }
         }
-      }
+      )
     }
   }
 }
@@ -1693,6 +1800,8 @@ private fun Step6SecurityPin(
 ) {
   var createPin by remember { mutableStateOf(treasurerPin) }
   var confirmPin by remember { mutableStateOf(treasurerPin) }
+  var isCreateVisible by remember { mutableStateOf(false) }
+  var isConfirmVisible by remember { mutableStateOf(false) }
 
   val createFocusRequester = remember { FocusRequester() }
   val confirmFocusRequester = remember { FocusRequester() }
@@ -1708,17 +1817,8 @@ private fun Step6SecurityPin(
 
   // Auto-advance to confirm PIN when 4 digits are entered in create PIN
   LaunchedEffect(createPin) {
-    if (createPin.length == 4) {
+    if (createPin.length == 4 && confirmPin.isEmpty()) {
       confirmFocusRequester.requestFocus()
-    }
-  }
-
-  // Auto-navigate to next page when both PINs match and are verified
-  LaunchedEffect(createPin, confirmPin) {
-    if (createPin.length == 4 && confirmPin.length == 4 && createPin == confirmPin) {
-      onTreasurerPinChange(createPin)
-      kotlinx.coroutines.delay(350)
-      onContinue()
     }
   }
 
@@ -1743,7 +1843,7 @@ private fun Step6SecurityPin(
         style = MaterialTheme.typography.bodyMedium.copy(color = TextSecondary)
       )
 
-      Spacer(modifier = Modifier.height(28.dp))
+      Spacer(modifier = Modifier.height(24.dp))
 
       PinBoxRow(
         pinValue = createPin,
@@ -1754,11 +1854,14 @@ private fun Step6SecurityPin(
           }
         },
         label = "Create 4-Digit Security PIN",
+        isError = pinsMismatch,
+        isPinVisible = isCreateVisible,
+        onToggleVisibility = { isCreateVisible = !isCreateVisible },
         focusRequester = createFocusRequester,
         testTagPrefix = "create_pin"
       )
 
-      Spacer(modifier = Modifier.height(28.dp))
+      Spacer(modifier = Modifier.height(24.dp))
 
       PinBoxRow(
         pinValue = confirmPin,
@@ -1769,6 +1872,9 @@ private fun Step6SecurityPin(
           }
         },
         label = "Confirm 4-Digit Security PIN",
+        isError = pinsMismatch,
+        isPinVisible = isConfirmVisible,
+        onToggleVisibility = { isConfirmVisible = !isConfirmVisible },
         focusRequester = confirmFocusRequester,
         testTagPrefix = "confirm_pin"
       )
@@ -1794,7 +1900,7 @@ private fun Step6SecurityPin(
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-              text = "Security PINs match perfectly — saving & continuing...",
+              text = "Security PINs match. Tap 'Save PIN & Continue' below.",
               fontSize = 13.sp,
               fontWeight = FontWeight.Bold,
               color = ForestGreenPrimary
@@ -1810,21 +1916,31 @@ private fun Step6SecurityPin(
         ) {
           Row(
             modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
           ) {
-            Icon(
-              imageVector = Icons.Default.ErrorOutline,
-              contentDescription = null,
-              tint = ErrorRed,
-              modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-              text = "PINs do not match. Please re-enter.",
-              fontSize = 13.sp,
-              fontWeight = FontWeight.Bold,
-              color = ErrorRed
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+              Icon(
+                imageVector = Icons.Default.ErrorOutline,
+                contentDescription = null,
+                tint = ErrorRed,
+                modifier = Modifier.size(20.dp)
+              )
+              Spacer(modifier = Modifier.width(10.dp))
+              Text(
+                text = "PINs do not match. Please re-enter.",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = ErrorRed
+              )
+            }
+            TextButton(onClick = {
+              createPin = ""
+              confirmPin = ""
+              createFocusRequester.requestFocus()
+            }) {
+              Text("Reset", color = ErrorRed, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
           }
         }
       }
@@ -1846,10 +1962,17 @@ private fun Step6SecurityPin(
         shape = RoundedCornerShape(8.dp),
         colors = ButtonDefaults.buttonColors(
           containerColor = ForestGreenPrimary,
-          disabledContainerColor = NeutralTrack
+          contentColor = PureWhite,
+          disabledContainerColor = ButtonDisabledContainer,
+          disabledContentColor = ButtonDisabledContent
         )
       ) {
-        Text("Save PIN & Continue", fontSize = 15.sp, color = PureWhite, fontWeight = FontWeight.Bold)
+        Text(
+          "Save PIN & Continue",
+          fontSize = 15.sp,
+          color = if (pinsMatch) PureWhite else ButtonDisabledContent,
+          fontWeight = FontWeight.Bold
+        )
       }
     }
   }
@@ -1916,7 +2039,7 @@ private fun Step7ConnectBot(
       Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = PureWhite),
-        border = BorderStroke(1.dp, BorderGrey),
+        border = BorderStroke(1.dp, InputBorderUnfocused),
         shape = RoundedCornerShape(8.dp)
       ) {
         Column(
@@ -1936,7 +2059,7 @@ private fun Step7ConnectBot(
           Surface(
             color = NeutralSurfaceLight,
             shape = RoundedCornerShape(6.dp),
-            border = BorderStroke(1.dp, BorderGrey)
+            border = BorderStroke(1.dp, InputBorderUnfocused)
           ) {
             Column(
               modifier = Modifier.padding(12.dp),
@@ -1991,7 +2114,10 @@ private fun Step7ConnectBot(
           .height(52.dp)
           .testTag("onboarding_open_whatsapp_btn"),
         shape = RoundedCornerShape(8.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+        colors = ButtonDefaults.buttonColors(
+          containerColor = ForestGreenPrimary,
+          contentColor = PureWhite
+        )
       ) {
         Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, tint = PureWhite, modifier = Modifier.size(20.dp))
         Spacer(modifier = Modifier.width(8.dp))
@@ -2011,7 +2137,12 @@ private fun Step7ConnectBot(
       }
     }
 
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp)) {
+    Column(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(vertical = 20.dp),
+      horizontalAlignment = Alignment.CenterHorizontally
+    ) {
       Button(
         onClick = onFinish,
         modifier = Modifier
@@ -2019,9 +2150,26 @@ private fun Step7ConnectBot(
           .height(52.dp)
           .testTag("onboarding_finish_btn"),
         shape = RoundedCornerShape(8.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
+        colors = ButtonDefaults.buttonColors(
+          containerColor = ForestGreenPrimary,
+          contentColor = PureWhite
+        )
       ) {
         Text("Go to Dashboard", style = MaterialTheme.typography.labelLarge.copy(color = PureWhite, fontWeight = FontWeight.Bold))
+      }
+
+      Spacer(modifier = Modifier.height(10.dp))
+
+      TextButton(
+        onClick = onFinish,
+        modifier = Modifier.testTag("onboarding_skip_whatsapp_btn")
+      ) {
+        Text(
+          "Skip for Now & Go to Dashboard",
+          color = TextSecondary,
+          fontSize = 14.sp,
+          fontWeight = FontWeight.SemiBold
+        )
       }
     }
   }

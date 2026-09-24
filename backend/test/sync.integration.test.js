@@ -254,3 +254,22 @@ test('HTTP auth fails closed; signed webhook processes batches once and retries 
     await new Promise(resolve => server.close(resolve));
   }
 });
+
+test('member uniqueness conflict on group_id and identity_id is updated without error', async () => {
+  const payload = fixture();
+  await syncGroup(payload, payload.treasurer.phone);
+  payload.members = [{
+    id: randomUUID(),
+    groupId: payload.group.id,
+    identityId: randomUUID(),
+    phone: payload.members[0].phone,
+    alias: 'Updated Member Alias',
+    state: 'active',
+    joinedCycle: 1
+  }];
+  const res = await syncGroup(payload, payload.treasurer.phone);
+  assert.equal(res.groupId, payload.group.id);
+  const updated = (await db.query('SELECT alias FROM members WHERE group_id=$1', [payload.group.id])).rows;
+  assert.equal(updated.length, 1);
+  assert.equal(updated[0].alias, 'Updated Member Alias');
+});

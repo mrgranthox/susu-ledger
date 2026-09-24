@@ -248,33 +248,22 @@ fun DashboardScreen(
             }
           }
 
-          // Actions: Lock App, WhatsApp Bot, Pairing Notifications, and Quick Menu
+          // Actions: Single Clean Cloud Sync + Officer Menu
           Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onSyncClick, modifier = Modifier.testTag("dashboard_refresh_btn")) {
-              Icon(Icons.Default.Refresh, contentDescription = "Refresh ledger", tint = ForestGreenPrimary)
-            }
             IconButton(
-              onClick = onLockApp,
-              modifier = Modifier.testTag("dashboard_lock_app_btn")
+              onClick = onSyncClick,
+              enabled = !isSyncing,
+              modifier = Modifier.testTag("dashboard_refresh_btn")
             ) {
-              Icon(
-                imageVector = Icons.Default.Lock,
-                contentDescription = "Lock App (PIN / Biometrics)",
-                tint = ForestGreenPrimary,
-                modifier = Modifier.size(20.dp)
-              )
-            }
-
-            IconButton(
-              onClick = onOpenWhatsAppSimulator,
-              modifier = Modifier.testTag("dashboard_bot_btn")
-            ) {
-              Icon(
-                imageVector = Icons.AutoMirrored.Filled.Chat,
-                contentDescription = "WhatsApp Bot",
-                tint = ForestGreenPrimary,
-                modifier = Modifier.size(20.dp)
-              )
+              if (isSyncing) {
+                androidx.compose.material3.CircularProgressIndicator(
+                  color = ForestGreenPrimary,
+                  modifier = Modifier.size(18.dp),
+                  strokeWidth = 2.dp
+                )
+              } else {
+                Icon(Icons.Default.Refresh, contentDescription = "Sync Cloud Ledger", tint = ForestGreenPrimary)
+              }
             }
 
             Box {
@@ -284,7 +273,7 @@ fun DashboardScreen(
               ) {
                 Icon(
                   imageVector = Icons.Default.MoreVert,
-                  contentDescription = "More Options",
+                  contentDescription = "Officer Session Options",
                   tint = LineIconBlack,
                   modifier = Modifier.size(20.dp)
                 )
@@ -296,11 +285,11 @@ fun DashboardScreen(
                 modifier = Modifier.background(PureWhite)
               ) {
                 DropdownMenuItem(
-                  leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp)) },
-                  text = { Text("Sync Cloud Ledger", color = TextPrimary) },
+                  leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp)) },
+                  text = { Text("Lock Ledger App", color = TextPrimary) },
                   onClick = {
                     topMenuOpen = false
-                    onSyncClick()
+                    onLockApp()
                   }
                 )
                 DropdownMenuItem(
@@ -467,9 +456,9 @@ fun DashboardScreen(
               onClick = onDirectPaymentClick,
               modifier = Modifier
                 .weight(1f)
-                .height(42.dp)
+                .height(44.dp)
                 .testTag("record_payment_quick_btn"),
-              colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary),
+              colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary, contentColor = PureWhite),
               shape = RoundedCornerShape(8.dp),
               contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
             ) {
@@ -479,19 +468,19 @@ fun DashboardScreen(
             }
 
             OutlinedButton(
-              onClick = onSyncClick,
+              onClick = onOpenLedger,
               modifier = Modifier
                 .weight(1f)
-                .height(42.dp)
-                .testTag("sync_cloud_btn"),
+                .height(44.dp)
+                .testTag("view_ledger_btn"),
               colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
               border = BorderStroke(1.dp, BorderGrey),
               shape = RoundedCornerShape(8.dp),
               contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
             ) {
-              Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(15.dp), tint = ForestGreenPrimary)
+              Icon(Icons.Default.Receipt, contentDescription = null, modifier = Modifier.size(15.dp), tint = ForestGreenPrimary)
               Spacer(modifier = Modifier.width(6.dp))
-              Text(if (isSyncing) "Syncing..." else "Sync Cloud", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+              Text("Audit Ledger", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
             }
           }
         }

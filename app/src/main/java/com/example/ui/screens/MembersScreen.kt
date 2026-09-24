@@ -77,6 +77,7 @@ import com.example.ui.theme.ForestGreenLightFill
 import com.example.ui.theme.ForestGreenPrimary
 import com.example.ui.theme.HeroAmber
 import com.example.ui.theme.HeroAmberBg
+import com.example.ui.theme.InputBorderUnfocused
 import com.example.ui.theme.LineIconBlack
 import com.example.ui.theme.LineIconGrey
 import com.example.ui.theme.PureWhite
@@ -97,12 +98,6 @@ fun MembersScreen(
 ) {
   var searchQuery by remember { mutableStateOf("") }
   var statusFilter by remember { mutableStateOf("ALL") } // ALL, PAID, PARTIAL, UNPAID
-  var showAddMemberForm by remember { mutableStateOf(false) }
-
-  // Add Member form state
-  var newMemberName by remember { mutableStateOf("") }
-  var newMemberPhone by remember { mutableStateOf("") }
-  var newMemberCycleLiable by remember { mutableStateOf("Week ${cycleNumber + 1}") }
 
   // Precompute member contribution statuses
   val memberPaymentMap = remember(members, cyclePayments) {
@@ -174,7 +169,7 @@ fun MembersScreen(
                 .testTag("members_search_input"),
               colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = ForestGreenPrimary,
-                unfocusedBorderColor = BorderGrey,
+                unfocusedBorderColor = InputBorderUnfocused,
                 focusedContainerColor = PureWhite,
                 unfocusedContainerColor = PureWhite
               ),
@@ -243,7 +238,7 @@ fun MembersScreen(
     },
     floatingActionButton = {
       FloatingActionButton(
-        onClick = { showAddMemberForm = true },
+        onClick = onAddMemberClick,
         containerColor = ForestGreenPrimary,
         contentColor = PureWhite,
         shape = RoundedCornerShape(24.dp),
@@ -305,82 +300,6 @@ fun MembersScreen(
         Spacer(modifier = Modifier.height(72.dp))
       }
     }
-  }
-
-  // Add Member Form Dialog
-  if (showAddMemberForm) {
-    AlertDialog(
-      onDismissRequest = { showAddMemberForm = false },
-      title = {
-        Text("Add Member", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-      },
-      text = {
-        Column(
-          modifier = Modifier.fillMaxWidth(),
-          verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-          OutlinedTextField(
-            value = newMemberName,
-            onValueChange = { newMemberName = it },
-            label = { Text("Name") },
-            placeholder = { Text("e.g. Kofi Mensah") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            shape = RoundedCornerShape(8.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-              focusedBorderColor = ForestGreenPrimary,
-              unfocusedBorderColor = BorderGrey
-            )
-          )
-
-          OutlinedTextField(
-            value = newMemberPhone,
-            onValueChange = { newMemberPhone = it },
-            label = { Text("Phone") },
-            placeholder = { Text("+233 24 000 0000") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            shape = RoundedCornerShape(8.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-              focusedBorderColor = ForestGreenPrimary,
-              unfocusedBorderColor = BorderGrey
-            )
-          )
-
-          OutlinedTextField(
-            value = newMemberCycleLiable,
-            onValueChange = { newMemberCycleLiable = it },
-            label = { Text("First cycle liable") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            shape = RoundedCornerShape(8.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-              focusedBorderColor = ForestGreenPrimary,
-              unfocusedBorderColor = BorderGrey
-            )
-          )
-        }
-      },
-      confirmButton = {
-        Button(
-          onClick = {
-            if (newMemberName.isNotBlank()) {
-              showAddMemberForm = false
-              onAddMemberClick()
-            }
-          },
-          shape = RoundedCornerShape(8.dp),
-          colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-        ) {
-          Text("Add Member", color = PureWhite)
-        }
-      },
-      dismissButton = {
-        TextButton(onClick = { showAddMemberForm = false }) {
-          Text("Cancel", color = TextSecondary)
-        }
-      }
-    )
   }
 }
 
