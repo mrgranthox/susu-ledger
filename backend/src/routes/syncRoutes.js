@@ -18,8 +18,11 @@ router.post('/sync', requirePhoneAuth, async (req, res) => {
     const notices=await db.query("SELECT count(*)::int AS count FROM week_notifications n JOIN cycles c ON c.id=n.cycle_id WHERE c.group_id=$1 AND n.state='pending'",[cloudId(req.body.group.id)]);
     res.json({...result,acceptedReceiptIds,pendingReceiptCount:receiptIds.length-acceptedReceiptIds.length,pendingNotificationCount:notices.rows[0].count});
   } catch (error) {
-    console.error('[Sync]', error.code || error.message);
-    res.status(error.status || (error.code ? 500 : 400)).json({ error: error.code ? 'Cloud storage failed. Please retry.' : error.message });
+    console.error('[Sync Error]', error);
+    res.status(error.status || (error.code ? 500 : 400)).json({
+      error: error.message || 'Cloud storage failed. Please retry.',
+      code: error.code
+    });
   }
 });
 

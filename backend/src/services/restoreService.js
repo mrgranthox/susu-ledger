@@ -32,9 +32,15 @@ async function getAccountBackup(verifiedPhone) {
       ...corrections.flatMap(c => [c.entered_by,c.approved_by]), ...audits.map(a => a.actor_id)
     ].filter(Boolean));
     const identities = (await client.query('SELECT id,phone,display_name,created_at FROM identities WHERE id=ANY($1::uuid[])', [[...identityIds]])).rows;
+    const paired = (await client.query(
+      "SELECT 1 FROM bot_pairings WHERE (group_id = ANY($1::uuid[]) OR phone = $2) AND status = 'PAIRED' LIMIT 1",
+      [ids, phone(verifiedPhone)]
+    )).rows;
+    const isBotConnected = paired.length > 0;
     await client.query('COMMIT');
     return {
       version: 1,
+      isBotConnected,
       identities: identities.map(i => ({id:i.id,phone:i.phone,displayName:i.display_name,createdAt:millis(i.created_at)})),
       groups: groups.map(g => ({id:g.id,name:g.name,amount:Number(g.amount),currency:g.currency,schedule:g.schedule,
         treasurerId:g.treasurer_id,officerId:g.officer_id,state:g.state,createdAt:millis(g.created_at)})),

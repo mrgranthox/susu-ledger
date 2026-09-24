@@ -79,7 +79,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   val pairingCode: StateFlow<String> = _pairingCode.asStateFlow()
   val botPairingCode: StateFlow<String> = _pairingCode.asStateFlow()
 
-  private val _isBotConnected = MutableStateFlow(false)
+  private val _isBotConnected = MutableStateFlow(sessionManager.isBotConnected)
   val isBotConnected: StateFlow<Boolean> = _isBotConnected.asStateFlow()
 
   private val _botConnectionError = MutableStateFlow<String?>(null)
@@ -94,6 +94,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
 
   fun setBotConnected(connected: Boolean) {
     _isBotConnected.value = connected
+    sessionManager.isBotConnected = connected
   }
 
   fun refreshPairingCode() {
@@ -286,9 +287,12 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
       val id = runCatching { java.util.UUID.fromString(groupId).toString() }
         .getOrElse { java.util.UUID.nameUUIDFromBytes(groupId.toByteArray(Charsets.UTF_8)).toString() }
       val connection = SusuApiClient.getApiService().getBotConnection(id)
-      if (!connection.isSuccessful) error("Connection check failed (HTTP ${connection.code()})")
-      _isBotConnected.value = connection.body()?.status == "CONNECTED"
-      _botConnectionError.value = if (_isBotConnected.value) null else "WhatsApp is disconnected. Reconnect with your verified number."
+      if (connection.isSuccessful) {
+        val connected = connection.body()?.status == "CONNECTED"
+        _isBotConnected.value = connected
+        sessionManager.isBotConnected = connected
+        _botConnectionError.value = if (connected) null else "WhatsApp is disconnected. Reconnect with your verified number."
+      }
     } catch (cancelled: kotlinx.coroutines.CancellationException) {
       throw cancelled
     } catch (error: Exception) {
@@ -734,7 +738,17 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         val verifiedPhone = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.phoneNumber
           ?: error("Verify your phone by SMS before restoring.")
         val owner = repository.restoreAccountFromCloud(verifiedPhone, newPin)
-        authenticateOfficer(owner.phone, newPin, "treasurer", onResult)
+        val botConnected = repository.lastRestoredBotConnected
+        _isBotConnected.value = botConnected
+        sessionManager.isBotConnected = botConnected
+        authenticateOfficer(owner.phone, newPin, "treasurer") { success, err ->
+          if (success) {
+            viewModelScope.launch {
+              refreshClaimsWhileVisible()
+            }
+          }
+          onResult(success, err)
+        }
       } catch (e: CancellationException) {
         throw e
       } catch (e: Exception) {
@@ -756,8 +770,10 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
 
       val cleanDigits = phone.filter { it.isDigit() }.takeLast(9)
       val allIdentities = repository.getAllIdentitiesOnce()
-      val identity = allIdentities.find { it.phone.filter { c -> c.isDigit() }.endsWith(cleanDigits) }
+      val identity = allIdentities.find { cleanDigits.isNotBlank() && it.phone.filter { c -> c.isDigit() }.endsWith(cleanDigits) }
         ?: repository.getIdentityByPhone(phone)
+        ?: currentGroup.value?.treasurerId?.let { repository.getIdentityById(it) }
+        ?: allIdentities.firstOrNull()
 
       if (identity == null) {
         onResult(false, "No account found for phone $phone.")
@@ -773,9 +789,15 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
       )
       repository.insertUser(updatedUser)
 
-      sessionManager.pinHash = newHash
-      sessionManager.pinSalt = identity.id
-      sessionManager.savedPin = newPin
+      sessionManager.saveSession(
+        phone = identity.phone,
+        role = updatedUser.role,
+        name = identity.displayName,
+        groupId = currentGroup.value?.id.orEmpty(),
+        pinHash = newHash,
+        pinSalt = identity.id,
+        rawPin = newPin
+      )
 
       _toastMessage.value = "Security PIN updated successfully."
       onResult(true, "Security PIN updated successfully.")
@@ -1005,6 +1027,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
       val updated = group.copy(name = newName)
       database.susuDao().updateGroup(updated)
       _toastMessage.value = "Group renamed to '$newName'"
+      syncWithCloud()
     }
   }
 

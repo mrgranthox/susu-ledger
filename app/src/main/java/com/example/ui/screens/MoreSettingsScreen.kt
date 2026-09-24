@@ -154,6 +154,9 @@ fun MoreSettingsScreen(
   var secondOfficerPinForDues by remember { mutableStateOf("") }
 
   var currentGroupName by remember { mutableStateOf(currentGroup?.name ?: groupName) }
+  androidx.compose.runtime.LaunchedEffect(currentGroup?.name) {
+    currentGroup?.name?.let { currentGroupName = it }
+  }
   var showPaystackModal by remember { mutableStateOf(false) }
   var showLegalTermsModal by remember { mutableStateOf(false) }
   var showDpcPrivacyModal by remember { mutableStateOf(false) }
@@ -267,15 +270,6 @@ fun MoreSettingsScreen(
         // SECTION: SECURITY
         Text("SECURITY & ACCESS", style = MaterialTheme.typography.labelSmall.copy(color = TextSecondary, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp))
         Spacer(modifier = Modifier.height(8.dp))
-
-        SettingsRow(
-          icon = Icons.Default.Lock,
-          title = "Lock App Now",
-          subtitle = "Require 4-digit PIN or fingerprint to regain access",
-          onClick = onLockApp
-        )
-
-        DividerLine()
 
         SettingsRow(
           icon = Icons.Default.Key,
@@ -872,44 +866,6 @@ fun MoreSettingsScreen(
     )
   }
 
-  // Rename Group dialog
-  if (showRenameGroupDialog) {
-    var tempName by remember { mutableStateOf(currentGroupName) }
-    AlertDialog(
-      onDismissRequest = { showRenameGroupDialog = false },
-      title = { Text("Rename Group", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
-      text = {
-        OutlinedTextField(
-          value = tempName,
-          onValueChange = { tempName = it },
-          label = { Text("Group name") },
-          modifier = Modifier.fillMaxWidth(),
-          singleLine = true,
-          colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = ForestGreenPrimary,
-            unfocusedBorderColor = BorderGrey
-          )
-        )
-      },
-      confirmButton = {
-        Button(
-          onClick = {
-            currentGroupName = tempName
-            showRenameGroupDialog = false
-          },
-          colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
-        ) {
-          Text("Save", color = PureWhite)
-        }
-      },
-      dismissButton = {
-        TextButton(onClick = { showRenameGroupDialog = false }) {
-          Text("Cancel", color = TextSecondary)
-        }
-      }
-    )
-  }
-
   // View All Audit Logs Bottom Sheet
   if (showAllAuditLogsModal) {
     val allAuditSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -1181,7 +1137,7 @@ fun MoreSettingsScreen(
   // RENAME GROUP DIALOG
   // ---------------------------------------------------------------------------
   if (showRenameGroupDialog) {
-    var editName by remember { mutableStateOf(currentGroupName) }
+    var editName by remember(showRenameGroupDialog) { mutableStateOf(currentGroupName) }
     AlertDialog(
       onDismissRequest = { showRenameGroupDialog = false },
       title = {

@@ -337,9 +337,51 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
         return;
       }
 
+      // Provide specific, actionable feedback based on pairing state
+      const codeRecord = (await db.query(
+        "SELECT bp.*, g.name AS group_name FROM bot_pairings bp LEFT JOIN groups g ON g.id = bp.group_id WHERE bp.code = $1",
+        [rawCode]
+      )).rows[0];
+
+      if (!codeRecord) {
+        await sendWhatsAppTextMessage(
+          fromPhone,
+          `Invalid pairing code "${rawCode}".\n\nPlease check the code displayed in your SusuLedger app under Settings & More > Connect WhatsApp and try again (e.g. PAIR: ${rawCode}).`,
+          identityId
+        );
+        return;
+      }
+
+      if (codeRecord.status === 'PAIRED') {
+        await sendWhatsAppTextMessage(
+          fromPhone,
+          `This SusuLedger group is already connected!\n\nGroup: ${codeRecord.group_name || 'Susu Group'}\nStatus: CONNECTED & ACTIVE\n\nYour WhatsApp bot is currently active. Reply MENU or HELP to start recording payments and viewing balances.`,
+          identityId
+        );
+        return;
+      }
+
+      if (new Date(codeRecord.expires_at) <= new Date()) {
+        await sendWhatsAppTextMessage(
+          fromPhone,
+          `This pairing code (${rawCode}) has expired (codes are valid for 15 minutes).\n\nPlease open SusuLedger, go to Settings & More > Connect WhatsApp to generate a new code, and send it here.`,
+          identityId
+        );
+        return;
+      }
+
+      if (codeRecord.phone !== formattedPhone) {
+        await sendWhatsAppTextMessage(
+          fromPhone,
+          `Phone Number Mismatch:\nThis pairing code was created for registered number ${codeRecord.phone}, but you are messaging from ${formattedPhone}.\n\nPlease send the code from the registered phone number in SusuLedger, or re-generate a code with this number.`,
+          identityId
+        );
+        return;
+      }
+
       await sendWhatsAppTextMessage(
         fromPhone,
-        'Unable to pair this WhatsApp account.\nSend the code from the same phone number you verified by SMS in SusuLedger. Codes are valid for 15 minutes and can only be used once. If you are using the verified number, generate a new code in the app and wait for registration to complete.',
+        `Unable to pair with code ${rawCode}. Please generate a fresh pairing code in your SusuLedger app and try again.`,
         identityId
       );
       return;

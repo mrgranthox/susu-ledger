@@ -4,6 +4,7 @@ import com.example.data.local.*
 
 data class AccountBackup(
   val version: Int,
+  val isBotConnected: Boolean = false,
   val identities: List<IdentityEntity>,
   val groups: List<GroupEntity>,
   val members: List<MemberEntity>,

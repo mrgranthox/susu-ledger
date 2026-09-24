@@ -36,6 +36,8 @@ class SusuRepository(private val database: SusuDatabase) {
   private val dao = database.susuDao()
   var hasPendingCloudMessages: Boolean = false
     private set
+  var lastRestoredBotConnected: Boolean = false
+    private set
 
   val allGroups: Flow<List<GroupEntity>> = dao.getAllGroups()
   val allPayments: Flow<List<PaymentEntity>> = dao.getAllPayments()
@@ -56,6 +58,7 @@ class SusuRepository(private val database: SusuDatabase) {
     val owner = backup.identities.firstOrNull { normalized(it.phone) == normalized(verifiedPhone) }
       ?: error("No cloud-backed officer account was found for this verified number.")
     check(backup.groups.isNotEmpty() && backup.groups.all { it.treasurerId == owner.id }) { "No owned cloud groups found" }
+    lastRestoredBotConnected = backup.isBotConnected
     return database.withTransaction {
       val existingGroups = dao.getAllGroupsOnce().map { cloudId(it.id) }.toSet()
       // Recovery is additive: never replace existing groups or unsynced local payments.

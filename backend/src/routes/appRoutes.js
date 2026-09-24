@@ -90,7 +90,15 @@ router.get('/pair-bot/:code', async (req, res, next) => {
 
 router.get('/groups/:id/bot-connection', async (req,res,next) => {
   try {
-    const result=await db.query("SELECT 1 FROM bot_pairings WHERE group_id=$1 AND status='PAIRED' LIMIT 1",[cloudId(req.params.id)]);
+    const gid = cloudId(req.params.id);
+    const result = await db.query(
+      `SELECT 1 FROM bot_pairings bp
+       WHERE (bp.group_id = $1 OR bp.group_id IN (
+         SELECT g.id FROM groups g WHERE g.treasurer_id = (SELECT treasurer_id FROM groups WHERE id = $1)
+       )) AND bp.status = 'PAIRED'
+       LIMIT 1`,
+      [gid]
+    );
     res.json({status:result.rowCount ? 'CONNECTED' : 'DISCONNECTED'});
   } catch(error) { next(error); }
 });

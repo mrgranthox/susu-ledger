@@ -248,8 +248,20 @@ fun DashboardScreen(
             }
           }
 
-          // Actions: Single Clean Cloud Sync + Officer Menu
+          // Actions: WhatsApp Assistant + Cloud Sync + Officer Menu
           Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+              onClick = onOpenWhatsAppSimulator,
+              modifier = Modifier.testTag("dashboard_bot_btn")
+            ) {
+              Icon(
+                imageVector = Icons.AutoMirrored.Filled.Chat,
+                contentDescription = "WhatsApp Assistant",
+                tint = ForestGreenPrimary,
+                modifier = Modifier.size(20.dp)
+              )
+            }
+
             IconButton(
               onClick = onSyncClick,
               enabled = !isSyncing,

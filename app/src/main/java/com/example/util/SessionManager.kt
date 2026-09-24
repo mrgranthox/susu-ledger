@@ -95,6 +95,10 @@ class SessionManager(context: Context) {
     get() = prefs.getBoolean(KEY_BIOMETRIC_ENABLED, true)
     set(value) = prefs.edit().putBoolean(KEY_BIOMETRIC_ENABLED, value).apply()
 
+  var isBotConnected: Boolean
+    get() = prefs.getBoolean("is_bot_connected", false)
+    set(value) = prefs.edit().putBoolean("is_bot_connected", value).apply()
+
   var lastNavIndex: Int
     get() = prefs.getInt(KEY_LAST_NAV_INDEX, 0)
     set(value) = prefs.edit().putInt(KEY_LAST_NAV_INDEX, value).apply()
