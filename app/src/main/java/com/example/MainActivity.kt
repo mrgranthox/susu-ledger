@@ -644,6 +644,9 @@ class MainActivity : FragmentActivity() {
                           viewModel.updateContributionAmount(newAmt, applyCurrent, reason)
                         },
                         onRenameGroup = { newName -> viewModel.renameGroup(newName) },
+                        onAddSecondOfficer = { phone, name, onResult ->
+                          viewModel.addSecondOfficer(phone, name, onResult)
+                        },
                         onOpenPairingSheet = { viewModel.showPairingSheet(true) },
                         onOpenWhatsAppSimulator = { viewModel.openSubscreen("whatsapp_bot") },
                         onSignOut = {

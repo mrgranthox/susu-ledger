@@ -128,6 +128,7 @@ fun MoreSettingsScreen(
   onTogglePauseGroup: (reason: String) -> Unit = {},
   onUpdateContributionAmount: (newAmount: Double, applyToCurrentCycle: Boolean, reason: String) -> Unit = { _, _, _ -> },
   onRenameGroup: (newName: String) -> Unit = {},
+  onAddSecondOfficer: (phone: String, name: String, onResult: (Boolean, String) -> Unit) -> Unit = { _, _, cb -> cb(true, "Officer added") },
   onOpenPairingSheet: () -> Unit = {},
   isBotConnected: Boolean = false,
   onOpenWhatsAppSimulator: () -> Unit = {},
@@ -361,10 +362,11 @@ fun MoreSettingsScreen(
 
         DividerLine()
 
+        val hasSecondOfficer = !currentGroup?.officerId.isNullOrBlank()
         SettingsRow(
           icon = Icons.Default.PersonAdd,
-          title = "Add second officer",
-          subtitle = "Dual sign-off for ledger corrections & payouts",
+          title = if (hasSecondOfficer) "Second officer assigned" else "Add second officer",
+          subtitle = if (hasSecondOfficer) "Dual co-signer active • Tap to reassign" else "Dual sign-off for ledger corrections & payouts",
           onClick = { showAddOfficerDialog = true }
         )
 
@@ -768,38 +770,93 @@ fun MoreSettingsScreen(
     }
   }
 
-  // Add Second Officer Dialog with phone input
+  // Add Second Officer Dialog with full name and phone inputs
   if (showAddOfficerDialog) {
+    var officerNameInput by remember { mutableStateOf("") }
+    var officerPhoneInput by remember { mutableStateOf("") }
+    var officerError by remember { mutableStateOf<String?>(null) }
+
     AlertDialog(
-      onDismissRequest = { showAddOfficerDialog = false },
-      title = { Text("Add Second Officer", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+      modifier = Modifier.imePadding(),
+      onDismissRequest = {
+        showAddOfficerDialog = false
+        officerError = null
+      },
+      title = { Text("Assign Second Officer", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
       text = {
         Column {
-          Text("Second officers can co-sign disputed ledger reversals and view weekly audits.", style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary))
+          Text(
+            "Second officers can co-sign disputed ledger reversals, authorize cycle advances, and review weekly audits.",
+            style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary)
+          )
           Spacer(modifier = Modifier.height(12.dp))
+
           OutlinedTextField(
-            value = secondOfficerPhone,
-            onValueChange = { secondOfficerPhone = it },
-            placeholder = { Text("+233 24 000 0000") },
-            label = { Text("Phone number") },
+            value = officerNameInput,
+            onValueChange = {
+              officerNameInput = it
+              officerError = null
+            },
+            placeholder = { Text("e.g. Kofi Mensah") },
+            label = { Text("Officer Full Name") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             colors = OutlinedTextFieldDefaults.colors(
               focusedBorderColor = ForestGreenPrimary,
               unfocusedBorderColor = BorderGrey
-            )
+            ),
+            shape = RoundedCornerShape(8.dp)
           )
+
+          Spacer(modifier = Modifier.height(8.dp))
+
+          OutlinedTextField(
+            value = officerPhoneInput,
+            onValueChange = {
+              officerPhoneInput = it
+              officerError = null
+            },
+            placeholder = { Text("024 000 0000 or +233...") },
+            label = { Text("Officer Phone Number") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedBorderColor = ForestGreenPrimary,
+              unfocusedBorderColor = BorderGrey
+            ),
+            shape = RoundedCornerShape(8.dp)
+          )
+
+          if (officerError != null) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(officerError ?: "", color = ErrorRed, fontSize = 12.sp)
+          }
         }
       },
       confirmButton = {
         Button(
           onClick = {
-            showAddOfficerDialog = false
-            Toast.makeText(context, "Invitation sent to $secondOfficerPhone", Toast.LENGTH_SHORT).show()
+            if (officerNameInput.isBlank()) {
+              officerError = "Please enter the officer's full name"
+              return@Button
+            }
+            if (officerPhoneInput.filter { it.isDigit() }.length < 9) {
+              officerError = "Please enter a valid Ghana phone number (min 9 digits)"
+              return@Button
+            }
+            onAddSecondOfficer(officerPhoneInput.trim(), officerNameInput.trim()) { success, msg ->
+              Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+              if (success) {
+                showAddOfficerDialog = false
+              } else {
+                officerError = msg
+              }
+            }
           },
           colors = ButtonDefaults.buttonColors(containerColor = ForestGreenPrimary)
         ) {
-          Text("Send Invite", color = PureWhite)
+          Text("Assign Officer", color = PureWhite)
         }
       },
       dismissButton = {

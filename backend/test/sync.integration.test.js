@@ -273,3 +273,49 @@ test('member uniqueness conflict on group_id and identity_id is updated without 
   assert.equal(updated.length, 1);
   assert.equal(updated[0].alias, 'Updated Member Alias');
 });
+
+test('multi-group memberships resolve both member and treasurer roles for single identity', async () => {
+  const { getActiveMemberships, broadcastWelcomeToGroupMembers } = require('../src/services/stateMachine');
+  const sharedIdentityPhone = `+23324000${String(++counter).padStart(4, '0')}`;
+  const sharedIdentityId = randomUUID();
+
+  // Create shared identity in DB
+  await db.query('INSERT INTO identities(id, phone, display_name) VALUES($1, $2, $3)', [
+    sharedIdentityId, sharedIdentityPhone, 'Shared Officer & Member'
+  ]);
+
+  // Group 1: User is Treasurer
+  const g1 = fixture();
+  g1.treasurer.id = sharedIdentityId;
+  g1.treasurer.phone = sharedIdentityPhone;
+  await syncGroup(g1, sharedIdentityPhone);
+
+  // Group 2: User is Member
+  const g2 = fixture();
+  g2.members.push({
+    id: randomUUID(),
+    groupId: g2.group.id,
+    identityId: sharedIdentityId,
+    phone: sharedIdentityPhone,
+    alias: 'Shared Member',
+    state: 'active',
+    joinedCycle: 1
+  });
+  await syncGroup(g2, g2.treasurer.phone);
+
+  const memberships = await getActiveMemberships(sharedIdentityId);
+  assert.equal(memberships.length, 2);
+  const roles = memberships.map(m => m.user_role);
+  assert.ok(roles.includes('Treasurer'));
+  assert.ok(roles.includes('Member'));
+
+  const whatsapp = require('../src/services/whatsappService');
+  const textMock = mock.method(whatsapp, 'sendWhatsAppTextMessage', async () => ({ success: true }));
+  try {
+    const sentCount = await broadcastWelcomeToGroupMembers(g2.group.id);
+    assert.ok(sentCount >= 1);
+  } finally {
+    textMock.mock.restore();
+  }
+});
+

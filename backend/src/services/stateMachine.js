@@ -43,20 +43,28 @@ async function resolveIdentity(fromPhone, formattedPhone) {
 
 async function getActiveMemberships(identityId) {
   const result = await db.query(
-    `SELECT
-       m.id AS member_id,
-       m.alias,
+    `SELECT DISTINCT ON (g.id)
+       COALESCE(m.id::text, 'officer-' || g.id::text) AS member_id,
+       COALESCE(m.alias, i.display_name, 'Officer') AS alias,
        g.id AS group_id,
        g.name AS group_name,
        g.amount AS group_amount,
        g.currency,
        g.schedule,
        g.treasurer_id,
+       g.officer_id,
+       g.state AS group_state,
+       CASE
+         WHEN g.treasurer_id = $1 THEN 'Treasurer'
+         WHEN g.officer_id = $1 THEN 'Second Officer'
+         ELSE 'Member'
+       END AS user_role,
        c.id AS cycle_id,
        c.number AS cycle_number,
        c.amount_due
-     FROM members m
-     JOIN groups g ON g.id = m.group_id
+     FROM groups g
+     LEFT JOIN members m ON m.group_id = g.id AND m.identity_id = $1 AND m.state = 'active'
+     LEFT JOIN identities i ON i.id = $1
      LEFT JOIN LATERAL (
        SELECT *
        FROM cycles
@@ -64,10 +72,9 @@ async function getActiveMemberships(identityId) {
        ORDER BY number DESC
        LIMIT 1
      ) c ON TRUE
-     WHERE m.identity_id = $1
-       AND m.state = 'active'
-       AND g.state = 'active'
-     ORDER BY g.created_at ASC`,
+     WHERE (m.id IS NOT NULL OR g.treasurer_id = $1 OR g.officer_id = $1)
+       AND g.state != 'deleted'
+     ORDER BY g.id, g.created_at ASC`,
     [identityId]
   );
 
@@ -142,10 +149,74 @@ function findMembershipSelection(cleanText, buttonPayload, memberships, session)
   return memberships[0];
 }
 
+async function broadcastWelcomeToGroupMembers(groupId) {
+  try {
+    const groupRes = await db.query(
+      `SELECT g.id, g.name AS group_name, g.amount, g.schedule, i.display_name AS treasurer_name, i.phone AS treasurer_phone
+       FROM groups g
+       JOIN identities i ON i.id = g.treasurer_id
+       WHERE g.id = $1`,
+      [groupId]
+    );
+    const group = groupRes.rows[0];
+    if (!group) return 0;
+
+    const membersRes = await db.query(
+      `SELECT m.id AS member_id, m.alias, i.id AS identity_id, i.phone, i.display_name
+       FROM members m
+       JOIN identities i ON i.id = m.identity_id
+       WHERE m.group_id = $1 AND m.state = 'active'`,
+      [groupId]
+    );
+
+    console.log(`[WhatsApp Broadcast] Delivering welcome messages to ${membersRes.rows.length} members of group "${group.group_name}"`);
+    let sentCount = 0;
+
+    for (const member of membersRes.rows) {
+      if (!member.phone) continue;
+      const memberName = member.alias || member.display_name || 'Member';
+      const welcomeText =
+        `👋 *Welcome to ${group.group_name}!*\n\n` +
+        `Hello ${memberName},\n\n` +
+        `You were added to the Susu group *${group.group_name}* by your treasurer *${group.treasurer_name || 'Treasurer'}* (${group.treasurer_phone}).\n\n` +
+        `I am the official *SusuLedger WhatsApp Assistant*. You can use me to track your weekly contributions, check your verified savings balance, and record payment claims directly on WhatsApp!\n\n` +
+        `📌 *Group Details*:\n` +
+        `• Contribution: GHS ${Number(group.amount || 0).toFixed(2)} (${group.schedule || 'weekly'})\n` +
+        `• Treasurer: ${group.treasurer_name || 'Treasurer'} (${group.treasurer_phone})\n\n` +
+        `📲 *Quick Commands*:\n` +
+        `• Reply *PAID* after sending your contribution\n` +
+        `• Reply *BALANCE* to inspect your savings record\n` +
+        `• Reply *PROGRESS* to view weekly cycle status\n` +
+        `• Reply *GROUPS* to switch groups\n` +
+        `• Reply *MENU* anytime for assistance\n\n` +
+        `👉 Reply *OK* or *CONFIRM* to confirm your membership, or *REJECT* to decline.`;
+
+      try {
+        await sendWhatsAppTextMessage(member.phone, welcomeText, member.identity_id);
+        await logMessage({
+          identityId: member.identity_id,
+          phone: member.phone,
+          direction: 'OUT',
+          body: welcomeText,
+          metaStatus: 'sent',
+        });
+        sentCount++;
+      } catch (sendErr) {
+        console.error(`[WhatsApp Broadcast Error] Failed to send welcome to ${member.phone}:`, sendErr.message);
+      }
+    }
+    return sentCount;
+  } catch (err) {
+    console.error('[WhatsApp Broadcast Error]', err.message);
+    return 0;
+  }
+}
+
 async function promptForGroup(fromPhone, identityId, memberships) {
   const lines = memberships.map((m, index) => {
+    const roleBadge = m.user_role ? ` [${m.user_role}]` : '';
     const amount = Number(m.amount_due || m.group_amount || 0).toFixed(2);
-    return `${index + 1}. ${m.group_name} - Week ${m.cycle_number || 1}, GHS ${amount}`;
+    return `${index + 1}. *${m.group_name}*${roleBadge} • GHS ${amount} (${m.schedule || 'weekly'})`;
   });
 
   await saveBotSession(identityId, {
@@ -155,7 +226,7 @@ async function promptForGroup(fromPhone, identityId, memberships) {
 
   await sendWhatsAppTextMessage(
     fromPhone,
-    `You belong to multiple active Susu groups. Which group is this payment for?\n\n${lines.join('\n')}\n\nReply with the group number.`,
+    `📂 *Your Susu Groups* (${memberships.length} available):\n\n${lines.join('\n')}\n\nReply with the group number (e.g. *1* or *2*) to set your active group.`,
     identityId
   );
 }
@@ -331,9 +402,10 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
 
         await sendWhatsAppTextMessage(
           fromPhone,
-          `SusuLedger instance paired successfully.\n\nPairing Code: ${rawCode}\nPhone: ${formattedPhone}\nYour app is now connected to the Cloud Run WhatsApp Bot Engine.`,
+          `✅ *SusuLedger Group Paired Successfully!*\n\nPairing Code: ${rawCode}\nPhone: ${formattedPhone}\nYour group is now live on the WhatsApp Bot Engine.\n\nBroadcasting welcome messages and instructions to all registered members...`,
           identityId
         );
+        await broadcastWelcomeToGroupMembers(pairSession.group_id);
         return;
       }
 
@@ -400,25 +472,133 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
   const memberships = allMemberships.filter(m=>connected.rows.some(p=>p.group_id===m.group_id));
   const session = await getBotSession(identityId);
 
-  if (cleanText === 'STOP' || cleanText === 'START' || cleanText === 'OK') {
-    const subscribed = cleanText !== 'STOP';
-    await db.query('UPDATE identities SET dpc_consent_granted=$1,dpc_consent_timestamp=clock_timestamp() WHERE id=$2',[subscribed,identityId]);
-    await sendWhatsAppTextMessage(fromPhone,subscribed ? 'Group reminders enabled. Reply STOP to unsubscribe.' : 'Group reminders stopped. Reply START to subscribe again.',identityId);
+  if (cleanText === 'OK' || cleanText === 'CONFIRM') {
+    await db.query('UPDATE identities SET dpc_consent_granted=true, dpc_consent_timestamp=clock_timestamp() WHERE id=$1', [identityId]);
+    const groupName = memberships[0]?.group_name || allMemberships[0]?.group_name || 'your Susu group';
+    await sendWhatsAppTextMessage(
+      fromPhone,
+      `✅ *Membership Confirmed!*\n\nThank you for confirming your membership in *${groupName}*.\n\nYou will receive automated alerts when weekly contributions are due. Reply *MENU* anytime to check balances or submit payment claims.`,
+      identityId
+    );
     return;
   }
 
-  if (cleanText === 'HELP' || cleanText === 'MENU' || cleanText === 'COMMANDS' || !cleanText) {
+  if (cleanText === 'REJECT' || cleanText === 'DECLINE') {
+    await db.query('UPDATE identities SET dpc_consent_granted=false, dpc_consent_timestamp=clock_timestamp() WHERE id=$1', [identityId]);
+    const groupName = memberships[0]?.group_name || allMemberships[0]?.group_name || 'the Susu group';
     await sendWhatsAppTextMessage(
       fromPhone,
-      `SusuLedger WhatsApp Assistant:\n\n` +
-        `Reply PAID to submit a contribution claim\n` +
-        `Reply PAID WEEK 1 to settle an earlier week\n` +
-        `Reply BALANCE to check your group balance\n` +
-        `Reply PROGRESS to view current cycle status\n` +
-        `Reply DUE for contribution details\n` +
-        `Reply SWITCH to select a group\n` +
-        `Reply START or STOP to manage reminders\n` +
-        `Reply PAIR:CODE to pair your mobile app instance`,
+      `You have declined participation in *${groupName}*.\n\nPlease contact your treasurer if this was done in error. You will not receive contribution notifications.`,
+      identityId
+    );
+    const targetTreasurerId = memberships[0]?.treasurer_id || allMemberships[0]?.treasurer_id;
+    if (targetTreasurerId) {
+      const treasurerRes = await db.query('SELECT phone, display_name FROM identities WHERE id = $1', [targetTreasurerId]);
+      if (treasurerRes.rows[0]?.phone) {
+        await sendWhatsAppTextMessage(
+          treasurerRes.rows[0].phone,
+          `⚠️ *MEMBER NOTICE*: ${identity.display_name || fromPhone} has declined participation in ${groupName} on WhatsApp.`,
+          identityId
+        );
+      }
+    }
+    return;
+  }
+
+  if (cleanText === 'STOP') {
+    await db.query('UPDATE identities SET dpc_consent_granted=false,dpc_consent_timestamp=clock_timestamp() WHERE id=$1',[identityId]);
+    await sendWhatsAppTextMessage(fromPhone,'Group reminders stopped. Reply START to subscribe again.',identityId);
+    return;
+  }
+
+  if (cleanText === 'START') {
+    await db.query('UPDATE identities SET dpc_consent_granted=true,dpc_consent_timestamp=clock_timestamp() WHERE id=$1',[identityId]);
+    await sendWhatsAppTextMessage(fromPhone,'Group reminders enabled. Reply STOP to unsubscribe.',identityId);
+    return;
+  }
+
+  // Group Switching / Accounts Command
+  const isSwitchCmd = cleanText === 'SWITCH' || cleanText === 'GROUPS' || cleanText === 'ACCOUNTS';
+  const switchTargetMatch = /^SWITCH\s+(\d+)$/.exec(cleanText);
+
+  if (isSwitchCmd) {
+    if (memberships.length <= 1) {
+      const onlyGroup = memberships[0];
+      await sendWhatsAppTextMessage(
+        fromPhone,
+        `📂 You belong to 1 active group: *${onlyGroup ? onlyGroup.group_name : 'No active group'}* (${onlyGroup?.user_role || 'Member'}).\n\nReply *MENU* to view commands.`,
+        identityId
+      );
+      return;
+    }
+    await promptForGroup(fromPhone, identityId, memberships);
+    return;
+  }
+
+  if (switchTargetMatch) {
+    const idx = Number(switchTargetMatch[1]) - 1;
+    if (memberships[idx]) {
+      const chosen = memberships[idx];
+      await saveBotSession(identityId, {
+        currentState: 'IDLE',
+        selectedGroupId: chosen.group_id,
+        contextData: { group_id: chosen.group_id, group_name: chosen.group_name },
+      });
+      await sendWhatsAppTextMessage(
+        fromPhone,
+        `✅ Active group switched to *${chosen.group_name}* (${chosen.user_role || 'Member'})!\n\n` +
+          `• Reply *BALANCE* for your verified savings\n` +
+          `• Reply *PAID* to record a contribution\n` +
+          `• Reply *PROGRESS* for cycle status\n` +
+          `• Reply *GROUPS* to switch groups`,
+        identityId
+      );
+      return;
+    }
+  }
+
+  if (session?.current_state === 'WAITING_GROUP_SELECTION' && /^[1-9]$/.test(cleanText)) {
+    const idx = Number(cleanText) - 1;
+    if (memberships[idx]) {
+      const chosen = memberships[idx];
+      await saveBotSession(identityId, {
+        currentState: 'IDLE',
+        selectedGroupId: chosen.group_id,
+        contextData: { group_id: chosen.group_id, group_name: chosen.group_name },
+      });
+      await sendWhatsAppTextMessage(
+        fromPhone,
+        `✅ Active group set to *${chosen.group_name}* (${chosen.user_role || 'Member'})!\n\n` +
+          `Commands for *${chosen.group_name}*:\n` +
+          `• Reply *BALANCE* for your verified savings\n` +
+          `• Reply *PAID* to submit a payment claim\n` +
+          `• Reply *DUE* for contribution details\n` +
+          `• Reply *PROGRESS* for cycle status\n` +
+          `• Reply *GROUPS* to switch groups`,
+        identityId
+      );
+      return;
+    }
+  }
+
+  const selectedMembership = findMembershipSelection(cleanText, buttonPayload, memberships, session);
+
+  if (cleanText === 'HELP' || cleanText === 'MENU' || cleanText === 'COMMANDS' || !cleanText) {
+    const activeGroupName = selectedMembership?.group_name || memberships[0]?.group_name || 'Susu Group';
+    const activeRole = selectedMembership?.user_role || memberships[0]?.user_role || 'Member';
+    const groupCountNote = memberships.length > 1 ? `\n📌 Active: *${activeGroupName}* (${activeRole} • 1 of ${memberships.length} groups)\n` : `\n📌 Group: *${activeGroupName}*\n`;
+
+    await sendWhatsAppTextMessage(
+      fromPhone,
+      `*SusuLedger Assistant*${groupCountNote}\n` +
+        `• *PAID* - Submit a contribution claim\n` +
+        `• *PAID WEEK 1* - Settle an earlier week\n` +
+        `• *BALANCE* - Check your verified savings\n` +
+        `• *PROGRESS* - View current cycle status\n` +
+        `• *DUE* - Contribution deadline details\n` +
+        (memberships.length > 1 ? `• *GROUPS* - Switch between your ${memberships.length} groups\n` : '') +
+        `• *START / STOP* - Manage reminders\n` +
+        `• *PAIR:CODE* - Pair your mobile app instance`,
       identityId
     );
     return;
@@ -435,14 +615,9 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
 
   const weekRequest = /^PAID\s+WEEK\s+(\d+)$/.exec(cleanText);
   const isClaimStart = cleanText === 'PAID' || Boolean(weekRequest) || buttonPayload === 'CLAIM_PAID';
-  if (cleanText === 'SWITCH') {
-    await promptForGroup(fromPhone,identityId,memberships);
-    return;
-  }
   const isAmountConfirmation = buttonPayload?.startsWith('CONFIRM_AMOUNT_') || cleanText.startsWith('CONFIRM_AMOUNT_');
   const isCustomClaim = buttonPayload === 'CLAIM_CUSTOM';
   const hasMomoEvidence = cleanText.startsWith('MOMO:') || cleanText.includes('MOMO');
-  const selectedMembership = findMembershipSelection(cleanText, buttonPayload, memberships, session);
   if (selectedMembership && (weekRequest || (!isClaimStart && session?.context_data?.cycleId))) {
     const target = weekRequest
       ? await db.query('SELECT * FROM cycles WHERE group_id=$1 AND number=$2',[selectedMembership.group_id,Number(weekRequest[1])])
@@ -502,13 +677,27 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
   }
 
   if (cleanText === 'BALANCE') {
-    const totals = await db.query(`SELECT m.group_id,COALESCE(SUM(p.amount_paid),0) AS total
-      FROM members m LEFT JOIN payments p ON p.member_id=m.id AND p.status='confirmed'
-      WHERE m.identity_id=$1 GROUP BY m.group_id`,[identityId]);
-    const lines=memberships.map(m=>`${m.group_name}: GHS ${Number(totals.rows.find(t=>t.group_id===m.group_id)?.total || 0).toFixed(2)} confirmed`);
+    const lines = [];
+    for (const m of memberships) {
+      if (m.user_role === 'Treasurer' || m.user_role === 'Second Officer') {
+        const poolRes = await db.query(
+          "SELECT COALESCE(SUM(amount_paid), 0) AS total FROM payments WHERE group_id = $1 AND status = 'confirmed'",
+          [m.group_id]
+        );
+        const total = Number(poolRes.rows[0]?.total || 0).toFixed(2);
+        lines.push(`🏛️ *${m.group_name}* [${m.user_role}]: GHS ${total} collected pool`);
+      } else {
+        const memberRes = await db.query(
+          "SELECT COALESCE(SUM(p.amount_paid), 0) AS total FROM payments p WHERE p.member_id = $1 AND p.status = 'confirmed'",
+          [m.member_id]
+        );
+        const total = Number(memberRes.rows[0]?.total || 0).toFixed(2);
+        lines.push(`👤 *${m.group_name}*: GHS ${total} confirmed savings`);
+      }
+    }
     await sendWhatsAppTextMessage(
       fromPhone,
-      `SusuLedger contribution statement\n\n${lines.join('\n')}`,
+      `📊 *SusuLedger Savings Statement*\n\n${lines.join('\n')}\n\nReply *GROUPS* to switch active group.`,
       identityId
     );
     return;
@@ -516,7 +705,7 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
 
   if (cleanText === 'DUE') {
     const treasurer=(await db.query('SELECT display_name,phone FROM identities WHERE id=$1',[selectedMembership.treasurer_id])).rows[0];
-    await sendWhatsAppTextMessage(fromPhone,`${selectedMembership.group_name}: GHS ${Number(selectedMembership.amount_due || selectedMembership.group_amount).toFixed(2)} due.\nContact your treasurer: ${treasurer.display_name} (${treasurer.phone}).\nReply PAID after contributing.`,identityId);
+    await sendWhatsAppTextMessage(fromPhone,`${selectedMembership.group_name}: GHS ${Number(selectedMembership.amount_due || selectedMembership.group_amount).toFixed(2)} due.\nContact your treasurer: ${treasurer?.display_name || 'Treasurer'} (${treasurer?.phone || 'In app'}).\nReply PAID after contributing.`,identityId);
     return;
   }
 
@@ -524,7 +713,7 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
     const lines = [];
     for (const membership of memberships) {
       const total=await db.query("SELECT COALESCE(SUM(amount_paid),0) AS total FROM payments WHERE cycle_id=$1 AND status='confirmed'",[membership.cycle_id]);
-      lines.push(`${membership.group_name}: Week ${membership.cycle_number || 1}, GHS ${Number(total.rows[0].total).toFixed(2)} collected`);
+      lines.push(`${membership.group_name}: Week ${membership.cycle_number || 1}, GHS ${Number(total.rows[0]?.total || 0).toFixed(2)} collected`);
     }
 
     await sendWhatsAppTextMessage(fromPhone, `SusuLedger group progress\n\n${lines.join('\n')}`, identityId);
@@ -540,6 +729,8 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
 
 module.exports = {
   handleIncomingWhatsAppMessage,
+  broadcastWelcomeToGroupMembers,
+  getActiveMemberships,
   parseAmount,
   parsePairingCommand,
 };

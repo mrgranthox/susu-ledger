@@ -141,6 +141,24 @@ router.post('/pair-bot', async (req, res) => {
   });
 });
 
+// 0b-2. Broadcast Welcome WhatsApp Messages to All Group Members
+router.post('/groups/:id/broadcast-welcome', async (req, res, next) => {
+  try {
+    const gid = cloudId(req.params.id);
+    const treasurer = (await db.query(
+      'SELECT g.id FROM groups g JOIN identities i ON i.id = g.treasurer_id WHERE g.id = $1 AND i.phone = $2',
+      [gid, normalizePhone(req.auth.phone_number)]
+    )).rows[0];
+    if (!treasurer) return res.status(403).json({ error: 'Only the verified treasurer can broadcast welcome messages.' });
+
+    const { broadcastWelcomeToGroupMembers } = require('../services/stateMachine');
+    const sentCount = await broadcastWelcomeToGroupMembers(gid);
+    res.json({ success: true, count: sentCount, message: `Welcome messages delivered to ${sentCount} members.` });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // 0c. Send Live WhatsApp Message to Member Phone
 router.post('/whatsapp/send-message', async (req, res) => {
   const { phone, message, identityId } = req.body;

@@ -1168,6 +1168,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         ?: return@launch
 
       val updated = group.copy(name = newName)
+      database.susuDao().insertGroup(updated)
       database.susuDao().updateGroup(updated)
       repository.logAuditEvent(
         groupId = group.id,
@@ -1177,6 +1178,74 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
       )
       _toastMessage.value = "Group renamed to '$newName'"
       syncWithCloud()
+    }
+  }
+
+  fun addSecondOfficer(phone: String, name: String, onResult: (Boolean, String) -> Unit) {
+    viewModelScope.launch {
+      try {
+        val cleanPhone = com.example.util.GhanaPhoneUtils.toE164(phone)
+        val group = currentGroup.value
+          ?: groups.value.find { it.id == _selectedGroupId.value }
+          ?: groups.value.firstOrNull()
+          ?: database.susuDao().getGroupById(_selectedGroupId.value)
+          ?: database.susuDao().getAllGroupsOnce().firstOrNull()
+
+        if (group == null) {
+          onResult(false, "No active group found")
+          return@launch
+        }
+
+        // 1. Get or create identity for second officer
+        var officerIdentity = repository.getIdentityByPhone(cleanPhone)
+        if (officerIdentity == null) {
+          val newIdentityId = java.util.UUID.randomUUID().toString()
+          officerIdentity = com.example.data.local.IdentityEntity(
+            id = newIdentityId,
+            phone = cleanPhone,
+            displayName = name.trim()
+          )
+          database.susuDao().insertIdentity(officerIdentity)
+        } else {
+          if (name.isNotBlank()) {
+            val updated = officerIdentity.copy(displayName = name.trim())
+            database.susuDao().insertIdentity(updated)
+            officerIdentity = updated
+          }
+        }
+
+        // 2. Create UserEntity with role second_officer
+        val existingUser = repository.getUserById(officerIdentity.id)
+        if (existingUser == null) {
+          val userEntity = com.example.data.local.UserEntity(
+            id = officerIdentity.id,
+            pinHash = CryptoUtils.hashPin("1234", officerIdentity.id),
+            role = "second_officer"
+          )
+          database.susuDao().insertUser(userEntity)
+        } else {
+          database.susuDao().insertUser(existingUser.copy(role = "second_officer"))
+        }
+
+        // 3. Update group with officerId
+        val updatedGroup = group.copy(officerId = officerIdentity.id)
+        database.susuDao().insertGroup(updatedGroup)
+        database.susuDao().updateGroup(updatedGroup)
+
+        // 4. Log audit event
+        repository.logAuditEvent(
+          groupId = group.id,
+          actorId = group.treasurerId,
+          action = "SECOND_OFFICER_ASSIGNED",
+          payload = """{"officerName":"${officerIdentity.displayName}","officerPhone":"$cleanPhone","officerId":"${officerIdentity.id}"}"""
+        )
+
+        _toastMessage.value = "${officerIdentity.displayName} assigned as Second Officer"
+        syncWithCloud()
+        onResult(true, "${officerIdentity.displayName} assigned as Second Officer")
+      } catch (e: Exception) {
+        onResult(false, e.localizedMessage ?: "Failed to assign second officer")
+      }
     }
   }
 

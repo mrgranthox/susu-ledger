@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,6 +32,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
@@ -44,6 +46,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -181,10 +185,13 @@ fun AuthOtpScreen(
         modifier = Modifier.padding(top = 4.dp, bottom = 20.dp)
       )
 
-      // SAVED GROUPS ON THIS DEVICE (Multi-Account / Multi-Group Switcher)
+      // SAVED GROUPS ON THIS DEVICE (Compact Dropdown Selector)
       if (savedGroups.isNotEmpty()) {
+        var groupDropdownExpanded by remember { mutableStateOf(false) }
+        val activeGroupItem = savedGroups.find { it.id == selectedGroupId } ?: savedGroups.first()
+
         Text(
-          text = "SAVED LEDGERS ON THIS DEVICE",
+          text = "LEDGER GROUP",
           style = MaterialTheme.typography.labelSmall.copy(
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.8.sp,
@@ -193,79 +200,119 @@ fun AuthOtpScreen(
           modifier = Modifier.align(Alignment.Start)
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
-        Column(
-          modifier = Modifier.fillMaxWidth(),
-          verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-          savedGroups.forEach { groupItem ->
-            val isSelected = selectedGroupId == groupItem.id
-            Surface(
+        Box(modifier = Modifier.fillMaxWidth()) {
+          Surface(
+            modifier = Modifier
+              .fillMaxWidth()
+              .clickable { groupDropdownExpanded = !groupDropdownExpanded },
+            shape = RoundedCornerShape(10.dp),
+            color = ForestGreenLightFill,
+            border = BorderStroke(1.5.dp, ForestGreenPrimary)
+          ) {
+            Row(
               modifier = Modifier
                 .fillMaxWidth()
-                .clickable {
-                  selectedGroupId = groupItem.id
-                  val rawDigits = groupItem.treasurerPhone.filter { it.isDigit() }
-                  val display = if (rawDigits.startsWith("233") && rawDigits.length > 3) rawDigits.substring(3) else rawDigits
-                  phoneNumber = display
-                  errorMessage = null
-                  onSelectSavedGroup(groupItem)
-                },
-              shape = RoundedCornerShape(10.dp),
-              color = if (isSelected) ForestGreenLightFill else NeutralSurfaceLight,
-              border = BorderStroke(1.5.dp, if (isSelected) ForestGreenPrimary else InputBorderUnfocused)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.SpaceBetween
             ) {
               Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
               ) {
                 Box(
                   modifier = Modifier
-                    .size(36.dp)
-                    .background(if (isSelected) ForestGreenPrimary else BorderGrey, CircleShape),
+                    .size(32.dp)
+                    .background(ForestGreenPrimary, CircleShape),
                   contentAlignment = Alignment.Center
                 ) {
                   Icon(
-                    imageVector = if (isSelected) Icons.Default.CheckCircle else Icons.Default.Shield,
+                    imageVector = Icons.Default.Shield,
                     contentDescription = null,
                     tint = PureWhite,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp)
                   )
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
                   Text(
-                    text = groupItem.name,
+                    text = activeGroupItem.name,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
                     color = TextPrimary
                   )
                   Text(
-                    text = "GHS ${String.format(java.util.Locale.US, "%.2f", groupItem.amount)} • ${groupItem.schedule.replaceFirstChar { it.uppercase() }}",
-                    fontSize = 12.sp,
+                    text = "GHS ${String.format(java.util.Locale.US, "%.2f", activeGroupItem.amount)} • ${activeGroupItem.schedule.replaceFirstChar { it.uppercase() }}${if (activeGroupItem.treasurerName.isNotBlank()) " • " + activeGroupItem.treasurerName else ""}",
+                    fontSize = 11.sp,
                     color = TextSecondary
                   )
-                  if (groupItem.treasurerName.isNotBlank() || groupItem.treasurerPhone.isNotBlank()) {
-                    Text(
-                      text = "Officer: ${groupItem.treasurerName.ifBlank { "Treasurer" }} • ${groupItem.treasurerPhone}",
-                      fontSize = 11.sp,
-                      color = if (isSelected) ForestGreenPrimary else TextSecondary,
-                      fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
-                    )
-                  }
                 }
               }
+
+              Icon(
+                imageVector = Icons.Default.ArrowDropDown,
+                contentDescription = "Select Group",
+                tint = ForestGreenPrimary,
+                modifier = Modifier.size(24.dp)
+              )
+            }
+          }
+
+          DropdownMenu(
+            expanded = groupDropdownExpanded,
+            onDismissRequest = { groupDropdownExpanded = false },
+            modifier = Modifier
+              .fillMaxWidth(0.9f)
+              .background(PureWhite)
+          ) {
+            savedGroups.forEach { item ->
+              val isItemSel = item.id == selectedGroupId
+              DropdownMenuItem(
+                text = {
+                  Column {
+                    Text(
+                      text = item.name,
+                      fontWeight = if (isItemSel) FontWeight.Bold else FontWeight.Medium,
+                      color = if (isItemSel) ForestGreenPrimary else TextPrimary,
+                      fontSize = 14.sp
+                    )
+                    Text(
+                      text = "GHS ${String.format(java.util.Locale.US, "%.2f", item.amount)} • ${item.schedule.replaceFirstChar { it.uppercase() }} • Officer: ${item.treasurerPhone}",
+                      fontSize = 11.sp,
+                      color = TextSecondary
+                    )
+                  }
+                },
+                leadingIcon = {
+                  Icon(
+                    imageVector = if (isItemSel) Icons.Default.CheckCircle else Icons.Default.Shield,
+                    contentDescription = null,
+                    tint = if (isItemSel) ForestGreenPrimary else BorderGrey,
+                    modifier = Modifier.size(18.dp)
+                  )
+                },
+                onClick = {
+                  selectedGroupId = item.id
+                  val rawDigits = item.treasurerPhone.filter { it.isDigit() }
+                  val display = if (rawDigits.startsWith("233") && rawDigits.length > 3) rawDigits.substring(3) else rawDigits
+                  phoneNumber = display
+                  errorMessage = null
+                  onSelectSavedGroup(item)
+                  groupDropdownExpanded = false
+                }
+              )
             }
           }
         }
 
-        Spacer(modifier = Modifier.height(18.dp))
+        Spacer(modifier = Modifier.height(12.dp))
       }
 
-      // Role Selection: Lead Treasurer vs Second Officer
+      // Compact Role Selection: Segmented Control
       Text(
         text = "AUTHORIZATION ROLE",
         style = MaterialTheme.typography.labelSmall.copy(
@@ -276,32 +323,83 @@ fun AuthOtpScreen(
         modifier = Modifier.align(Alignment.Start)
       )
 
-      Spacer(modifier = Modifier.height(8.dp))
+      Spacer(modifier = Modifier.height(6.dp))
 
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+      Surface(
+        modifier = Modifier
+          .fillMaxWidth()
+          .height(38.dp),
+        shape = RoundedCornerShape(8.dp),
+        color = NeutralSurfaceLight,
+        border = BorderStroke(1.dp, InputBorderUnfocused)
       ) {
-        RoleCard(
-          title = "Lead Treasurer",
-          subtitle = "Primary Ledger Authority",
-          isSelected = selectedRole == "treasurer",
-          modifier = Modifier.weight(1f)
+        Row(
+          modifier = Modifier
+            .fillMaxSize()
+            .padding(2.dp),
+          horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-          selectedRole = "treasurer"
-        }
+          val isTreasurer = selectedRole == "treasurer"
+          Surface(
+            modifier = Modifier
+              .weight(1f)
+              .fillMaxHeight()
+              .clickable { selectedRole = "treasurer" },
+            shape = RoundedCornerShape(6.dp),
+            color = if (isTreasurer) ForestGreenPrimary else Color.Transparent
+          ) {
+            Row(
+              modifier = Modifier.fillMaxSize(),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.Center
+            ) {
+              Box(
+                modifier = Modifier
+                  .size(10.dp)
+                  .background(if (isTreasurer) PureWhite else BorderGrey, CircleShape)
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(
+                text = "Lead Treasurer",
+                fontSize = 12.sp,
+                fontWeight = if (isTreasurer) FontWeight.Bold else FontWeight.Medium,
+                color = if (isTreasurer) PureWhite else TextSecondary
+              )
+            }
+          }
 
-        RoleCard(
-          title = "Second Officer",
-          subtitle = "Dual Sign-off & Audit",
-          isSelected = selectedRole == "second_officer",
-          modifier = Modifier.weight(1f)
-        ) {
-          selectedRole = "second_officer"
+          val isOfficer = selectedRole == "second_officer"
+          Surface(
+            modifier = Modifier
+              .weight(1f)
+              .fillMaxHeight()
+              .clickable { selectedRole = "second_officer" },
+            shape = RoundedCornerShape(6.dp),
+            color = if (isOfficer) ForestGreenPrimary else Color.Transparent
+          ) {
+            Row(
+              modifier = Modifier.fillMaxSize(),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.Center
+            ) {
+              Box(
+                modifier = Modifier
+                  .size(10.dp)
+                  .background(if (isOfficer) PureWhite else BorderGrey, CircleShape)
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(
+                text = "Second Officer",
+                fontSize = 12.sp,
+                fontWeight = if (isOfficer) FontWeight.Bold else FontWeight.Medium,
+                color = if (isOfficer) PureWhite else TextSecondary
+              )
+            }
+          }
         }
       }
 
-      Spacer(modifier = Modifier.height(18.dp))
+      Spacer(modifier = Modifier.height(14.dp))
 
       // Registered Phone Input
       Card(

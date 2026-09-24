@@ -424,6 +424,7 @@ class SusuRepository(private val database: SusuDatabase) {
     val group = dao.getGroupById(groupId) ?: return false
     val isPausing = newState.equals("paused", ignoreCase = true)
     val updatedGroup = group.copy(state = if (isPausing) "paused" else "active")
+    dao.insertGroup(updatedGroup)
     dao.updateGroup(updatedGroup)
 
     val activeCycle = dao.getActiveCycleOnce(groupId)
