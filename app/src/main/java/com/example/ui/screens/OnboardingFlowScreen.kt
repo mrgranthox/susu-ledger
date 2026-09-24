@@ -369,10 +369,10 @@ private fun Step1Welcome(
         modifier = Modifier.testTag("already_have_account_btn")
       ) {
         Text(
-          text = "Already have an account? Log in",
+          text = "Already have an account? Log in or Restore with SMS",
           style = MaterialTheme.typography.bodyMedium.copy(
-            color = TextPrimary,
-            fontWeight = FontWeight.Medium
+            color = ForestGreenPrimary,
+            fontWeight = FontWeight.SemiBold
           )
         )
       }

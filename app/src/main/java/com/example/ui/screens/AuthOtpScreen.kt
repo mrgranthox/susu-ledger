@@ -33,6 +33,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -426,7 +427,36 @@ fun AuthOtpScreen(
         }
       }
 
-      Spacer(modifier = Modifier.height(14.dp))
+      Spacer(modifier = Modifier.height(10.dp))
+
+      TextButton(
+        onClick = { showResetDialog = true },
+        enabled = !isAuthenticating,
+        modifier = Modifier
+          .fillMaxWidth()
+          .testTag("restore_account_sms_btn")
+      ) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.Center
+        ) {
+          Icon(
+            imageVector = Icons.Default.Refresh,
+            contentDescription = null,
+            tint = ForestGreenPrimary,
+            modifier = Modifier.size(18.dp)
+          )
+          Spacer(modifier = Modifier.width(6.dp))
+          Text(
+            text = "Restore Account with SMS",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = ForestGreenPrimary
+          )
+        }
+      }
+
+      Spacer(modifier = Modifier.height(10.dp))
 
       OutlinedButton(
         onClick = {
