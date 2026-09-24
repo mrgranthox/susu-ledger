@@ -141,6 +141,12 @@ interface SusuDao {
   @Query("SELECT * FROM payments WHERE cycle_id = :cycleId ORDER BY confirmed_at DESC")
   fun getPaymentsForCycle(cycleId: String): Flow<List<PaymentEntity>>
 
+  @Query("SELECT p.* FROM payments p INNER JOIN cycles c ON p.cycle_id = c.id WHERE c.group_id = :groupId ORDER BY p.confirmed_at DESC")
+  fun getPaymentsForGroup(groupId: String): Flow<List<PaymentEntity>>
+
+  @Query("SELECT p.* FROM payments p INNER JOIN cycles c ON p.cycle_id = c.id WHERE c.group_id = :groupId ORDER BY p.confirmed_at ASC")
+  suspend fun getPaymentsForGroupOnce(groupId: String): List<PaymentEntity>
+
   @Query("SELECT * FROM payments WHERE cycle_id = :cycleId AND status = 'confirmed'")
   suspend fun getConfirmedPaymentsForCycle(cycleId: String): List<PaymentEntity>
 
@@ -152,6 +158,9 @@ interface SusuDao {
 
   @Query("SELECT * FROM payments ORDER BY confirmed_at DESC LIMIT 1")
   suspend fun getLastPayment(): PaymentEntity?
+
+  @Query("SELECT p.* FROM payments p INNER JOIN cycles c ON p.cycle_id = c.id WHERE c.group_id = :groupId ORDER BY p.confirmed_at DESC LIMIT 1")
+  suspend fun getLastPaymentForGroup(groupId: String): PaymentEntity?
 
   @Query("SELECT * FROM payments WHERE id = :id LIMIT 1")
   suspend fun getPaymentById(id: String): PaymentEntity?
@@ -180,6 +189,12 @@ interface SusuDao {
 
   @Query("SELECT * FROM ledger_entries ORDER BY created_at ASC")
   suspend fun getAllLedgerEntriesOnce(): List<LedgerEntryEntity>
+
+  @Query("SELECT le.* FROM ledger_entries le INNER JOIN accounts a ON le.account_id = a.id WHERE a.group_id = :groupId ORDER BY le.created_at DESC")
+  fun getLedgerEntriesForGroup(groupId: String): Flow<List<LedgerEntryEntity>>
+
+  @Query("SELECT le.* FROM ledger_entries le INNER JOIN accounts a ON le.account_id = a.id WHERE a.group_id = :groupId ORDER BY le.created_at ASC")
+  suspend fun getLedgerEntriesForGroupOnce(groupId: String): List<LedgerEntryEntity>
 
   @Query("SELECT * FROM ledger_entries WHERE payment_id = :paymentId")
   suspend fun getEntriesForPayment(paymentId: String): List<LedgerEntryEntity>
@@ -217,8 +232,11 @@ interface SusuDao {
   suspend fun insertLedgerCorrection(correction: LedgerCorrectionEntity)
 
   // 10. Audit Logs
-  @Query("SELECT * FROM audit_log WHERE group_id = :groupId ORDER BY created_at DESC")
+  @Query("SELECT * FROM audit_log WHERE :groupId = '' OR group_id = :groupId OR group_id IS NULL ORDER BY created_at DESC")
   fun getAuditLogsForGroup(groupId: String): Flow<List<AuditLogEntity>>
+
+  @Query("SELECT * FROM audit_log ORDER BY created_at DESC")
+  fun getAllAuditLogs(): Flow<List<AuditLogEntity>>
 
   @Insert(onConflict = OnConflictStrategy.REPLACE)
   suspend fun insertAuditLog(audit: AuditLogEntity)
@@ -226,6 +244,9 @@ interface SusuDao {
   // 11. WhatsApp Message Logs
   @Query("SELECT * FROM message_log ORDER BY timestamp ASC")
   fun getAllMessages(): Flow<List<MessageLogEntity>>
+
+  @Query("SELECT * FROM message_log WHERE phone IN (SELECT phone FROM members WHERE group_id = :groupId) OR phone = 'Broadcast: All Members' ORDER BY timestamp ASC")
+  fun getMessagesForGroup(groupId: String): Flow<List<MessageLogEntity>>
 
   @Query("SELECT * FROM message_log WHERE meta_status = 'queued' AND sender_name = 'SusuBot Receipt'")
   suspend fun getQueuedReceipts(): List<MessageLogEntity>

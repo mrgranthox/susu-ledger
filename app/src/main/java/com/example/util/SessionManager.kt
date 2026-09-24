@@ -95,9 +95,20 @@ class SessionManager(context: Context) {
     get() = prefs.getBoolean(KEY_BIOMETRIC_ENABLED, true)
     set(value) = prefs.edit().putBoolean(KEY_BIOMETRIC_ENABLED, value).apply()
 
+  fun isBotConnectedForGroup(groupId: String): Boolean =
+    if (groupId.isBlank()) prefs.getBoolean("is_bot_connected", false)
+    else prefs.getBoolean("is_bot_connected_$groupId", false)
+
+  fun setBotConnectedForGroup(groupId: String, connected: Boolean) {
+    if (groupId.isNotBlank()) {
+      prefs.edit().putBoolean("is_bot_connected_$groupId", connected).apply()
+    }
+    prefs.edit().putBoolean("is_bot_connected", connected).apply()
+  }
+
   var isBotConnected: Boolean
-    get() = prefs.getBoolean("is_bot_connected", false)
-    set(value) = prefs.edit().putBoolean("is_bot_connected", value).apply()
+    get() = if (activeGroupId.isNotBlank()) isBotConnectedForGroup(activeGroupId) else prefs.getBoolean("is_bot_connected", false)
+    set(value) = setBotConnectedForGroup(activeGroupId, value)
 
   var lastNavIndex: Int
     get() = prefs.getInt(KEY_LAST_NAV_INDEX, 0)

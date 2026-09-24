@@ -144,8 +144,6 @@ fun DashboardScreen(
   onLockApp: () -> Unit = {},
   onSignOut: () -> Unit = {}
 ) {
-  var groupDropdownOpen by remember { mutableStateOf(false) }
-  var topMenuOpen by remember { mutableStateOf(false) }
   var showAllClaimsModal by remember { mutableStateOf(false) }
   var selectedPaymentForDetail by remember { mutableStateOf<PaymentEntity?>(null) }
   var transactionFilter by remember { mutableStateOf("ALL") } // "ALL", "MOMO", "CASH", "AGENT"
@@ -197,56 +195,15 @@ fun DashboardScreen(
           horizontalArrangement = Arrangement.SpaceBetween,
           verticalAlignment = Alignment.CenterVertically
         ) {
-          // Group Switcher
-          Box {
-            Row(
-              modifier = Modifier
-                .clip(RoundedCornerShape(6.dp))
-                .clickable { groupDropdownOpen = true }
-                .padding(vertical = 4.dp),
-              verticalAlignment = Alignment.CenterVertically
-            ) {
-              Text(
-                text = currentGroup?.name ?: "Susu Group",
-                style = MaterialTheme.typography.titleLarge.copy(
-                  fontWeight = FontWeight.Bold,
-                  color = TextPrimary
-                )
-              )
-              Spacer(modifier = Modifier.width(4.dp))
-              Icon(
-                imageVector = Icons.Default.ArrowDropDown,
-                contentDescription = "Switch Group",
-                tint = LineIconBlack,
-                modifier = Modifier.size(22.dp)
-              )
-            }
-
-            DropdownMenu(
-              expanded = groupDropdownOpen,
-              onDismissRequest = { groupDropdownOpen = false },
-              modifier = Modifier.background(PureWhite)
-            ) {
-              groups.forEach { g ->
-                DropdownMenuItem(
-                  text = {
-                    Column {
-                      Text(text = g.name, fontWeight = FontWeight.Bold, color = TextPrimary)
-                      Text(
-                        text = "GHS ${String.format(Locale.US, "%.2f", g.amount)} • ${g.schedule}",
-                        fontSize = 12.sp,
-                        color = TextSecondary
-                      )
-                    }
-                  },
-                  onClick = {
-                    onSelectGroup(g.id)
-                    groupDropdownOpen = false
-                  }
-                )
-              }
-            }
-          }
+          // Active Group Title (Clean, Fixed, Enterprise header)
+          Text(
+            text = currentGroup?.name ?: "Susu Group",
+            style = MaterialTheme.typography.titleLarge.copy(
+              fontWeight = FontWeight.Bold,
+              color = TextPrimary
+            ),
+            modifier = Modifier.padding(vertical = 4.dp)
+          )
 
           // Actions: WhatsApp Assistant + Cloud Sync + Officer Menu
           Row(verticalAlignment = Alignment.CenterVertically) {
@@ -275,43 +232,6 @@ fun DashboardScreen(
                 )
               } else {
                 Icon(Icons.Default.Refresh, contentDescription = "Sync Cloud Ledger", tint = ForestGreenPrimary)
-              }
-            }
-
-            Box {
-              IconButton(
-                onClick = { topMenuOpen = true },
-                modifier = Modifier.testTag("dashboard_top_menu_btn")
-              ) {
-                Icon(
-                  imageVector = Icons.Default.MoreVert,
-                  contentDescription = "Officer Session Options",
-                  tint = LineIconBlack,
-                  modifier = Modifier.size(20.dp)
-                )
-              }
-
-              DropdownMenu(
-                expanded = topMenuOpen,
-                onDismissRequest = { topMenuOpen = false },
-                modifier = Modifier.background(PureWhite)
-              ) {
-                DropdownMenuItem(
-                  leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(18.dp)) },
-                  text = { Text("Lock Ledger App", color = TextPrimary) },
-                  onClick = {
-                    topMenuOpen = false
-                    onLockApp()
-                  }
-                )
-                DropdownMenuItem(
-                  leadingIcon = { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, tint = ErrorRed, modifier = Modifier.size(18.dp)) },
-                  text = { Text("Sign Out", color = ErrorRed, fontWeight = FontWeight.Bold) },
-                  onClick = {
-                    topMenuOpen = false
-                    onSignOut()
-                  }
-                )
               }
             }
           }

@@ -62,6 +62,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.ui.SusuViewModel
+import com.example.ui.SavedGroupItem
 import com.example.ui.components.AddMemberDialog
 import com.example.ui.components.BiometricAuthDialog
 import com.example.ui.screens.AppLockScreen
@@ -111,6 +112,7 @@ class MainActivity : FragmentActivity() {
         val isOnboardingCompleted by viewModel.isOnboardingCompleted.collectAsState()
         val isAppLocked by viewModel.isAppLocked.collectAsState()
         val groups by viewModel.groups.collectAsState()
+        val savedGroups by viewModel.savedGroups.collectAsState()
         val selectedGroupId by viewModel.selectedGroupId.collectAsState()
         val activeCycle by viewModel.activeCycle.collectAsState()
         val allCycles by viewModel.allCycles.collectAsState()
@@ -141,6 +143,7 @@ class MainActivity : FragmentActivity() {
         val ledgerEntries by viewModel.ledgerEntries.collectAsState()
         val verificationReport by viewModel.verificationReport.collectAsState()
         val isVerifying by viewModel.isVerifying.collectAsState()
+        val auditLogs by viewModel.auditLogs.collectAsState()
 
         val snackbarHostState = remember { SnackbarHostState() }
 
@@ -250,10 +253,12 @@ class MainActivity : FragmentActivity() {
             if (isOnboardingCompleted) {
               // Returning officer session: Directly present PIN / Biometric login to prevent starting from scratch
               AuthOtpScreen(
+                savedGroups = savedGroups,
+                onSelectSavedGroup = { item -> viewModel.selectGroup(item.id) },
                 onRestoreAccount = { pin, result -> viewModel.restoreOfficerAccount(pin, result) },
-                onBiometricAuthenticated = { result -> viewModel.authenticateBiometricOfficer(result) },
-                onAuthenticate = { phone, pin, role, onResult ->
-                  viewModel.authenticateOfficer(phone, pin, role) { success, err ->
+                onBiometricAuthenticated = { prefGid, result -> viewModel.authenticateBiometricOfficer(prefGid, result) },
+                onAuthenticate = { phone, pin, role, prefGid, onResult ->
+                  viewModel.authenticateOfficer(phone, pin, role, prefGid) { success, err ->
                     if (success) {
                       showLoginScreen = false
                       viewModel.unlockApp()
@@ -292,10 +297,12 @@ class MainActivity : FragmentActivity() {
                 }
                 showLoginScreen -> {
                   AuthOtpScreen(
+                    savedGroups = savedGroups,
+                    onSelectSavedGroup = { item -> viewModel.selectGroup(item.id) },
                     onRestoreAccount = { pin, result -> viewModel.restoreOfficerAccount(pin, result) },
-                    onBiometricAuthenticated = { result -> viewModel.authenticateBiometricOfficer(result) },
-                    onAuthenticate = { phone, pin, role, onResult ->
-                      viewModel.authenticateOfficer(phone, pin, role) { success, err ->
+                    onBiometricAuthenticated = { prefGid, result -> viewModel.authenticateBiometricOfficer(prefGid, result) },
+                    onAuthenticate = { phone, pin, role, prefGid, onResult ->
+                      viewModel.authenticateOfficer(phone, pin, role, prefGid) { success, err ->
                         if (success) {
                           showLoginScreen = false
                           viewModel.unlockApp()
@@ -312,6 +319,17 @@ class MainActivity : FragmentActivity() {
                   // App-First Clean Slate Onboarding Flow
                   OnboardingFlowScreen(
                     pairingCode = pairingCode,
+                    onPreparePairing = { groupName, amount, treasurerPhone, treasurerName, members, treasurerPin, schedule ->
+                      viewModel.prepareOnboardingGroup(
+                        groupName = groupName,
+                        amount = amount,
+                        treasurerPhone = treasurerPhone,
+                        treasurerName = treasurerName,
+                        members = members,
+                        treasurerPin = treasurerPin,
+                        schedule = schedule
+                      )
+                    },
                     onCompleteOnboarding = { groupName, amount, treasurerPhone, treasurerName, initialMembers, treasurerPin, schedule ->
                       val memberPairs = initialMembers.map { it.name to it.phone }
                       viewModel.completeOnboarding(
@@ -609,7 +627,15 @@ class MainActivity : FragmentActivity() {
                         currentGroup = currentGroup,
                         activeCycle = activeCycle,
                         isBiometricEnabled = isBiometricEnabled,
-                        onUpdateBiometricEnabled = { viewModel.setBiometricEnabled(it) },
+                        onUpdateBiometricEnabled = { targetVal ->
+                          pendingSensitiveAction = Triple(
+                            if (targetVal) "Enable Biometric Unlock" else "Disable Biometric Unlock",
+                            if (targetVal) "Authenticate with fingerprint or security PIN to activate biometric unlock for this ledger."
+                            else "Authenticate with fingerprint or security PIN to deactivate biometric unlock."
+                          ) {
+                            viewModel.setBiometricEnabled(targetVal)
+                          }
+                        },
                         onChangePin = { newPin, onResult ->
                           viewModel.updateOfficerPin(newPin, onResult)
                         },
@@ -633,7 +659,8 @@ class MainActivity : FragmentActivity() {
                         },
                         onLockApp = {
                           viewModel.lockApp()
-                        }
+                        },
+                        auditLogEntities = auditLogs
                       )
                     }
                   }

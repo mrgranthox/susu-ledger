@@ -3,6 +3,7 @@ package com.example.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.local.AuditLogEntity
 import com.example.data.local.ClaimEntity
 import com.example.data.local.CycleEntity
 import com.example.data.local.GroupEntity
@@ -44,6 +45,15 @@ data class DashboardStats(
   val pendingAmount: Double = 0.0,
   val totalTargetAmount: Double = 0.0,
   val progressPercent: Int = 0
+)
+
+data class SavedGroupItem(
+  val id: String,
+  val name: String,
+  val amount: Double,
+  val schedule: String,
+  val treasurerPhone: String,
+  val treasurerName: String
 )
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -237,6 +247,20 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   val groups: StateFlow<List<GroupEntity>> = repository.allGroups
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+  val savedGroups: StateFlow<List<SavedGroupItem>> = combine(groups, repository.getAllIdentities()) { grps, idents ->
+    grps.map { g ->
+      val ident = idents.find { it.id == g.treasurerId }
+      SavedGroupItem(
+        id = g.id,
+        name = g.name,
+        amount = g.amount,
+        schedule = g.schedule,
+        treasurerPhone = ident?.phone.orEmpty(),
+        treasurerName = ident?.displayName.orEmpty()
+      )
+    }
+  }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
   val currentGroup: StateFlow<GroupEntity?> = combine(_selectedGroupId, groups) { gid, glist ->
     glist.find { it.id == gid } ?: glist.firstOrNull()
   }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -253,18 +277,25 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     repository.getMembers(gid)
   }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-  val payments: StateFlow<List<PaymentEntity>> = repository.allPayments
-    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+  val payments: StateFlow<List<PaymentEntity>> = _selectedGroupId.flatMapLatest { gid ->
+    repository.getPaymentsForGroup(gid)
+  }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-  val ledgerEntries: StateFlow<List<LedgerEntryEntity>> = repository.allLedgerEntries
-    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+  val ledgerEntries: StateFlow<List<LedgerEntryEntity>> = _selectedGroupId.flatMapLatest { gid ->
+    repository.getLedgerEntriesForGroup(gid)
+  }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
   val pendingClaims: StateFlow<List<ClaimEntity>> = _selectedGroupId.flatMapLatest { groupId ->
     repository.getPendingGroupClaims(groupId)
   }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-  val messages: StateFlow<List<MessageLogEntity>> = repository.allMessages
-    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+  val messages: StateFlow<List<MessageLogEntity>> = _selectedGroupId.flatMapLatest { gid ->
+    repository.getMessagesForGroup(gid)
+  }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+  val auditLogs: StateFlow<List<AuditLogEntity>> = _selectedGroupId.flatMapLatest { gid ->
+    repository.getAuditLogs(gid)
+  }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
   // Verification & Sync
   val unsyncedPaymentsCount: StateFlow<Int> = repository.unsyncedPaymentsCount
@@ -475,11 +506,22 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
       }
     }
 
-    // Automatically select the first group if none is selected
+    // Automatically select the active group or first group if none is selected
     viewModelScope.launch {
       groups.collect { groupList ->
         if (_selectedGroupId.value.isBlank() && groupList.isNotEmpty()) {
-          _selectedGroupId.value = groupList.first().id
+          val active = sessionManager.activeGroupId
+          val found = groupList.find { it.id == active } ?: groupList.first()
+          _selectedGroupId.value = found.id
+          sessionManager.activeGroupId = found.id
+          _isBotConnected.value = sessionManager.isBotConnectedForGroup(found.id)
+        }
+      }
+    }
+    viewModelScope.launch {
+      _selectedGroupId.collect { gid ->
+        if (gid.isNotBlank()) {
+          _isBotConnected.value = sessionManager.isBotConnectedForGroup(gid)
         }
       }
     }
@@ -489,7 +531,8 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
       try {
         val allGroups = repository.getAllGroupsOnce()
         if (allGroups.isNotEmpty()) {
-          val firstGroup = allGroups.first()
+          val active = sessionManager.activeGroupId
+          val firstGroup = allGroups.find { it.id == active } ?: allGroups.first()
           if (!sessionManager.isOnboarded) {
             sessionManager.isOnboarded = true
             sessionManager.activeGroupId = firstGroup.id
@@ -516,6 +559,47 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     }
   }
 
+  fun prepareOnboardingGroup(
+    groupName: String,
+    amount: Double,
+    treasurerPhone: String,
+    treasurerName: String,
+    members: List<Pair<String, String>>,
+    treasurerPin: String = "",
+    schedule: String = "weekly"
+  ) {
+    viewModelScope.launch {
+      try {
+        val cleanTreasurerPhone = com.example.util.GhanaPhoneUtils.toE164(treasurerPhone)
+        val newGroup = repository.createNewGroupWithMembers(
+          groupName = groupName,
+          amount = amount,
+          schedule = schedule,
+          treasurerPhone = cleanTreasurerPhone,
+          treasurerName = treasurerName,
+          members = members,
+          treasurerPin = treasurerPin
+        )
+        _selectedGroupId.value = newGroup.id
+        _userPhone.value = cleanTreasurerPhone
+        _userRole.value = "treasurer"
+        sessionManager.saveSession(
+          phone = cleanTreasurerPhone,
+          role = "treasurer",
+          name = treasurerName,
+          groupId = newGroup.id,
+          pinHash = CryptoUtils.hashPin(treasurerPin, newGroup.treasurerId),
+          pinSalt = newGroup.treasurerId,
+          rawPin = treasurerPin
+        )
+        repository.syncAllOfflineDataToCloud(newGroup.id)
+        startPairing(forceNew = true)
+      } catch (e: Exception) {
+        // Safe fallback
+      }
+    }
+  }
+
   fun completeOnboarding(
     groupName: String,
     amount: Double,
@@ -527,36 +611,38 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   ) {
     viewModelScope.launch {
       try {
-        val newGroup = repository.createNewGroupWithMembers(
-          groupName = groupName,
-          amount = amount,
-          schedule = schedule,
-          treasurerPhone = treasurerPhone,
-          treasurerName = treasurerName,
-          members = members,
-          treasurerPin = treasurerPin
-        )
-        val resolvedPin = treasurerPin
-        _selectedGroupId.value = newGroup.id
-        _userPhone.value = treasurerPhone
+        var group = currentGroup.value ?: groups.value.find { it.id == _selectedGroupId.value }
+        if (group == null) {
+          group = repository.createNewGroupWithMembers(
+            groupName = groupName,
+            amount = amount,
+            schedule = schedule,
+            treasurerPhone = treasurerPhone,
+            treasurerName = treasurerName,
+            members = members,
+            treasurerPin = treasurerPin
+          )
+          _selectedGroupId.value = group.id
+        }
+        val cleanTreasurerPhone = com.example.util.GhanaPhoneUtils.toE164(treasurerPhone)
+        _userPhone.value = cleanTreasurerPhone
         _userRole.value = "treasurer"
         _isAuthenticated.value = true
         _isOnboardingCompleted.value = true
         _isAppLocked.value = false
 
         sessionManager.saveSession(
-          phone = treasurerPhone,
+          phone = cleanTreasurerPhone,
           role = "treasurer",
           name = treasurerName,
-          groupId = newGroup.id,
-          pinHash = CryptoUtils.hashPin(resolvedPin, newGroup.treasurerId),
-          pinSalt = newGroup.treasurerId,
-          rawPin = resolvedPin
+          groupId = group.id,
+          pinHash = CryptoUtils.hashPin(treasurerPin, group.treasurerId),
+          pinSalt = group.treasurerId,
+          rawPin = treasurerPin
         )
 
-        _toastMessage.value = "Group '${newGroup.name}' created successfully!"
+        _toastMessage.value = "Group '${group.name}' setup completed!"
         syncWithCloud()
-        showPairingSheet(true)
       } catch (e: Exception) {
         _toastMessage.value = "Error creating group: ${e.localizedMessage}"
       }
@@ -566,6 +652,18 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   fun selectGroup(groupId: String) {
     _selectedGroupId.value = groupId
     sessionManager.activeGroupId = groupId
+    _isBotConnected.value = sessionManager.isBotConnectedForGroup(groupId)
+    viewModelScope.launch {
+      val grp = groups.value.find { it.id == groupId } ?: repository.getAllGroupsOnce().find { it.id == groupId }
+      if (grp != null) {
+        val treasurer = repository.getIdentityById(grp.treasurerId)
+        if (treasurer != null) {
+          _userPhone.value = treasurer.phone
+          sessionManager.loggedInPhone = treasurer.phone
+          sessionManager.officerName = treasurer.displayName
+        }
+      }
+    }
   }
 
   fun unlockApp() {
@@ -664,6 +762,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     phone: String,
     pin: String,
     role: String = "treasurer",
+    preferredGroupId: String? = null,
     onResult: (success: Boolean, errorMessage: String?) -> Unit
   ) {
     viewModelScope.launch {
@@ -703,15 +802,32 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
       if (!isPinValid) {
         val err = "Incorrect 4-digit security PIN. Access denied."
         _toastMessage.value = err
+        repository.logAuditEvent(
+          groupId = currentGroup.value?.id ?: _selectedGroupId.value.ifBlank { null },
+          actorId = identity.id,
+          action = "PIN_FAILED",
+          payload = """{"event":"Failed PIN entry attempt for officer ${identity.displayName}"}"""
+        )
         onResult(false, err)
         return@launch
       }
 
+      repository.logAuditEvent(
+        groupId = currentGroup.value?.id ?: _selectedGroupId.value.ifBlank { null },
+        actorId = identity.id,
+        action = "PIN_AUTHENTICATED",
+        payload = """{"event":"Officer ${identity.displayName} authenticated successfully"}"""
+      )
+
       _userPhone.value = identity.phone
       _userRole.value = user.role.ifBlank { role }
-      val group = repository.getGroupByTreasurer(identity.id) ?: repository.getAllGroupsOnce().firstOrNull()
+      val group = (if (!preferredGroupId.isNullOrBlank()) groups.value.find { it.id == preferredGroupId } ?: repository.getAllGroupsOnce().find { it.id == preferredGroupId } else null)
+        ?: repository.getGroupByTreasurer(identity.id)
+        ?: repository.getAllGroupsOnce().firstOrNull()
       if (group != null) {
         _selectedGroupId.value = group.id
+        sessionManager.activeGroupId = group.id
+        _isBotConnected.value = sessionManager.isBotConnectedForGroup(group.id)
       }
       _isAuthenticated.value = true
       _isOnboardingCompleted.value = true
@@ -797,6 +913,13 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         pinHash = newHash,
         pinSalt = identity.id,
         rawPin = newPin
+      )
+
+      repository.logAuditEvent(
+        groupId = currentGroup.value?.id ?: _selectedGroupId.value.ifBlank { null },
+        actorId = identity.id,
+        action = "PIN_UPDATED",
+        payload = """{"event":"Officer updated 4-digit security PIN"}"""
       )
 
       _toastMessage.value = "Security PIN updated successfully."
@@ -990,42 +1113,68 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   }
 
   fun togglePauseGroup(reason: String = "Administrative pause") {
-    val group = currentGroup.value ?: return
-    val newState = if (group.state.equals("paused", ignoreCase = true)) "active" else "paused"
     viewModelScope.launch {
+      val group = currentGroup.value
+        ?: groups.value.find { it.id == _selectedGroupId.value }
+        ?: groups.value.firstOrNull()
+        ?: database.susuDao().getGroupById(_selectedGroupId.value)
+        ?: database.susuDao().getAllGroupsOnce().firstOrNull()
+        ?: return@launch
+
+      val newState = if (group.state.equals("paused", ignoreCase = true)) "active" else "paused"
       val success = repository.pauseOrResumeGroup(
         groupId = group.id,
         newState = newState,
         reason = reason,
-        officerId = "identity-treasurer-01"
+        officerId = group.treasurerId
       )
       if (success) {
-        _toastMessage.value = if (newState == "paused") "Group paused & members notified on WhatsApp" else "Group resumed & WhatsApp announcement broadcast"
+        _toastMessage.value = if (newState == "paused") "Group paused & members notified" else "Group resumed & members notified"
+        syncWithCloud()
       }
     }
   }
 
   fun updateContributionAmount(newAmount: Double, applyToCurrentCycle: Boolean = true, reason: String = "Officer dues adjustment") {
-    val group = currentGroup.value ?: return
     viewModelScope.launch {
+      val group = currentGroup.value
+        ?: groups.value.find { it.id == _selectedGroupId.value }
+        ?: groups.value.firstOrNull()
+        ?: database.susuDao().getGroupById(_selectedGroupId.value)
+        ?: database.susuDao().getAllGroupsOnce().firstOrNull()
+        ?: return@launch
+
       val success = repository.updateGroupContributionAmount(
         groupId = group.id,
         newAmount = newAmount,
         applyToCurrentCycle = applyToCurrentCycle,
         reason = reason,
-        officerId = "identity-treasurer-01"
+        officerId = group.treasurerId
       )
       if (success) {
-        _toastMessage.value = "Contribution dues updated to GHS ${String.format(java.util.Locale.US, "%.2f", newAmount)} with dual-officer record!"
+        _toastMessage.value = "Contribution dues updated to GHS ${String.format(java.util.Locale.US, "%.2f", newAmount)}"
+        syncWithCloud()
       }
     }
   }
 
   fun renameGroup(newName: String) {
-    val group = currentGroup.value ?: return
     viewModelScope.launch {
+      val group = currentGroup.value
+        ?: groups.value.find { it.id == _selectedGroupId.value }
+        ?: groups.value.firstOrNull()
+        ?: database.susuDao().getGroupById(_selectedGroupId.value)
+        ?: database.susuDao().getAllGroupsOnce().firstOrNull()
+        ?: return@launch
+
       val updated = group.copy(name = newName)
       database.susuDao().updateGroup(updated)
+      repository.logAuditEvent(
+        groupId = group.id,
+        actorId = group.treasurerId,
+        action = "GROUP_RENAMED",
+        payload = """{"oldName":"${group.name}","newName":"$newName"}"""
+      )
       _toastMessage.value = "Group renamed to '$newName'"
       syncWithCloud()
     }
@@ -1046,6 +1195,17 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     sessionManager.isBiometricEnabled = enabled
     _isBiometricEnabled.value = enabled
     _toastMessage.value = if (enabled) "Biometric unlock enabled" else "Biometric unlock disabled"
+    viewModelScope.launch {
+      val group = currentGroup.value
+        ?: groups.value.find { it.id == _selectedGroupId.value }
+        ?: groups.value.firstOrNull()
+      repository.logAuditEvent(
+        groupId = group?.id,
+        actorId = group?.treasurerId,
+        action = "BIOMETRIC_TOGGLED",
+        payload = """{"enabled":$enabled}"""
+      )
+    }
   }
 
   fun updateOfficerPin(newPin: String, onResult: (Boolean, String) -> Unit) {
@@ -1063,21 +1223,32 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     _isOnboardingCompleted.value = false
   }
 
-  fun authenticateBiometricOfficer(onResult: (Boolean, String?) -> Unit) {
+  fun authenticateBiometricOfficer(preferredGroupId: String? = null, onResult: (Boolean, String?) -> Unit) {
     viewModelScope.launch {
-      val phone = sessionManager.biometricOfficerPhone.ifBlank {
-        com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.phoneNumber.orEmpty()
-      }
+      val preferredGroup = if (!preferredGroupId.isNullOrBlank()) {
+        groups.value.find { it.id == preferredGroupId } ?: repository.getAllGroupsOnce().find { it.id == preferredGroupId }
+      } else null
+
+      val preferredTreasurer = preferredGroup?.let { repository.getIdentityById(it.treasurerId) }
+
+      val phone = preferredTreasurer?.phone?.ifBlank { null }
+        ?: sessionManager.biometricOfficerPhone.ifBlank {
+          com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.phoneNumber.orEmpty()
+        }
       val identity = repository.getIdentityByPhone(phone)
       val user = identity?.let { repository.getUserById(it.id) }
       if (!sessionManager.isBiometricEnabled || identity == null || user == null) {
         onResult(false, "Sign in with your phone and PIN first to enable this account.")
         return@launch
       }
-      val group = repository.getGroupByTreasurer(identity.id)
+      val group = preferredGroup ?: repository.getGroupByTreasurer(identity.id) ?: repository.getAllGroupsOnce().firstOrNull()
       _userPhone.value = identity.phone
       _userRole.value = user.role
       _selectedGroupId.value = group?.id.orEmpty()
+      if (group != null) {
+        sessionManager.activeGroupId = group.id
+        _isBotConnected.value = sessionManager.isBotConnectedForGroup(group.id)
+      }
       sessionManager.saveSession(identity.phone, user.role, identity.displayName, group?.id.orEmpty(), user.pinHash, identity.id)
       _isAuthenticated.value = true
       _isOnboardingCompleted.value = true

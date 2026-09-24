@@ -44,6 +44,36 @@ class SusuRepository(private val database: SusuDatabase) {
   val allLedgerEntries: Flow<List<LedgerEntryEntity>> = dao.getAllLedgerEntries()
   val allMessages: Flow<List<MessageLogEntity>> = dao.getAllMessages()
   val unsyncedPaymentsCount: Flow<Int> = dao.getUnsyncedPaymentsCount()
+  val allAuditLogs: Flow<List<AuditLogEntity>> = dao.getAllAuditLogs()
+
+  fun getPaymentsForGroup(groupId: String): Flow<List<PaymentEntity>> =
+    if (groupId.isBlank()) dao.getAllPayments() else dao.getPaymentsForGroup(groupId)
+
+  fun getLedgerEntriesForGroup(groupId: String): Flow<List<LedgerEntryEntity>> =
+    if (groupId.isBlank()) dao.getAllLedgerEntries() else dao.getLedgerEntriesForGroup(groupId)
+
+  fun getMessagesForGroup(groupId: String): Flow<List<MessageLogEntity>> =
+    if (groupId.isBlank()) dao.getAllMessages() else dao.getMessagesForGroup(groupId)
+
+  fun getAuditLogs(groupId: String): Flow<List<AuditLogEntity>> =
+    if (groupId.isBlank()) dao.getAllAuditLogs() else dao.getAuditLogsForGroup(groupId)
+
+  suspend fun logAuditEvent(
+    groupId: String?,
+    actorId: String?,
+    action: String,
+    payload: String?
+  ) {
+    dao.insertAuditLog(
+      AuditLogEntity(
+        actorId = actorId,
+        groupId = groupId,
+        action = action,
+        payload = payload,
+        createdAt = System.currentTimeMillis()
+      )
+    )
+  }
 
   suspend fun restoreAccountFromCloud(verifiedPhone: String, newPin: String): IdentityEntity {
     val response = SusuApiClient.getApiService().getAccountBackup()
@@ -243,7 +273,7 @@ class SusuRepository(private val database: SusuDatabase) {
     require(amount.isFinite() && amount > 0 && kotlin.math.abs(amount * 100 - kotlin.math.round(amount * 100)) < 0.0001) { "Enter a positive amount with at most two decimals" }
 
     // Fetch previous hash for SHA-256 chain
-    val lastPayment = dao.getLastPayment()
+    val lastPayment = dao.getLastPaymentForGroup(groupId)
     val prevHash = lastPayment?.currentHash ?: CryptoUtils.getGenesisHash()
 
     require(amount.isFinite() && amount > 0) { "Enter a positive payment amount" }
@@ -575,6 +605,16 @@ class SusuRepository(private val database: SusuDatabase) {
       state = "open"
     )
     dao.insertCycle(nextCycle)
+
+    // Log to audit trail
+    dao.insertAuditLog(
+      AuditLogEntity(
+        actorId = dao.getGroupById(groupId)?.treasurerId,
+        groupId = groupId,
+        action = "CYCLE_CLOSED",
+        payload = """{"closedCycle":${currentCycle.number},"openedCycle":$nextNumber,"amountDue":$amount}"""
+      )
+    )
 
     // Log announcement broadcast message
     dao.insertMessage(

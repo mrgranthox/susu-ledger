@@ -142,6 +142,7 @@ data class ContactItem(val name: String, val phone: String)
 @Composable
 fun OnboardingFlowScreen(
   pairingCode: String = "",
+  onPreparePairing: (groupName: String, amount: Double, treasurerPhone: String, treasurerName: String, members: List<Pair<String, String>>, treasurerPin: String, schedule: String) -> Unit = { _, _, _, _, _, _, _ -> },
   onCompleteOnboarding: (groupName: String, amount: Double, treasurerPhone: String, treasurerName: String, members: List<SetupMemberItem>, treasurerPin: String, schedule: String) -> Unit,
   onSwitchToLogin: () -> Unit
 ) {
@@ -249,13 +250,24 @@ fun OnboardingFlowScreen(
         6 -> Step6SecurityPin(
           treasurerPin = treasurerPin,
           onTreasurerPinChange = { treasurerPin = it },
-          onContinue = { currentStep = 7 }
+          onContinue = {
+            val amtNum = contributionAmount.replace("GHS", "").replace(",", "").trim().toDoubleOrNull() ?: 50.0
+            onPreparePairing(
+              groupName.trim(),
+              amtNum,
+              treasurerPhone,
+              treasurerName.trim(),
+              memberList.map { it.name to it.phone },
+              treasurerPin,
+              collectionFrequency
+            )
+            currentStep = 7
+          }
         )
         7 -> {
           val amtNum = contributionAmount.replace("GHS", "").replace(",", "").trim().toDoubleOrNull() ?: 50.0
-          val code = if (pairingCode.isNotBlank()) pairingCode else "SL-${treasurerPhone.takeLast(4)}"
           Step7ConnectBot(
-            pairingCode = code,
+            pairingCode = pairingCode.ifBlank { "CONNECTING..." },
             treasurerName = treasurerName.trim(),
             groupName = groupName.trim(),
             onFinish = {
@@ -2148,27 +2160,16 @@ private fun Step7ConnectBot(
         modifier = Modifier
           .fillMaxWidth()
           .height(52.dp)
-          .testTag("onboarding_finish_btn"),
+          .testTag("onboarding_skip_whatsapp_btn"),
         shape = RoundedCornerShape(8.dp),
         colors = ButtonDefaults.buttonColors(
           containerColor = ForestGreenPrimary,
           contentColor = PureWhite
         )
       ) {
-        Text("Go to Dashboard", style = MaterialTheme.typography.labelLarge.copy(color = PureWhite, fontWeight = FontWeight.Bold))
-      }
-
-      Spacer(modifier = Modifier.height(10.dp))
-
-      TextButton(
-        onClick = onFinish,
-        modifier = Modifier.testTag("onboarding_skip_whatsapp_btn")
-      ) {
         Text(
-          "Skip for Now & Go to Dashboard",
-          color = TextSecondary,
-          fontSize = 14.sp,
-          fontWeight = FontWeight.SemiBold
+          "Skip for Now & Continue to Dashboard",
+          style = MaterialTheme.typography.labelLarge.copy(color = PureWhite, fontWeight = FontWeight.Bold)
         )
       }
     }

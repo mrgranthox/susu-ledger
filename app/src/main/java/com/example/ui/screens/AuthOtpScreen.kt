@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -86,16 +87,19 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun AuthOtpScreen(
-  onAuthenticate: (phone: String, pin: String, role: String, onResult: (Boolean, String?) -> Unit) -> Unit,
+  savedGroups: List<com.example.ui.SavedGroupItem> = emptyList(),
+  onSelectSavedGroup: (com.example.ui.SavedGroupItem) -> Unit = {},
+  onAuthenticate: (phone: String, pin: String, role: String, preferredGroupId: String?, onResult: (Boolean, String?) -> Unit) -> Unit,
   onNavigateToRegister: () -> Unit,
   onRestoreAccount: (String, (Boolean, String?) -> Unit) -> Unit = { _, result -> result(false, "Recovery is unavailable.") },
-  onBiometricAuthenticated: ((Boolean, String?) -> Unit) -> Unit = { it(false, "Sign in with your phone and PIN first.") }
+  onBiometricAuthenticated: ((preferredGroupId: String?, (Boolean, String?) -> Unit) -> Unit) = { _, cb -> cb(false, "Sign in with your phone and PIN first.") }
 ) {
   val context = LocalContext.current
   val activity = context as? Activity
   val coroutineScope = rememberCoroutineScope()
   val biometricManager = remember { BiometricAuthManager(context) }
 
+  var selectedGroupId by remember { mutableStateOf<String?>(savedGroups.firstOrNull()?.id) }
   var phoneNumber by remember { mutableStateOf("") }
   var pinValue by remember { mutableStateOf("") }
   var isPinVisible by remember { mutableStateOf(false) }
@@ -103,6 +107,18 @@ fun AuthOtpScreen(
   var isAuthenticating by remember { mutableStateOf(false) }
   var errorMessage by remember { mutableStateOf<String?>(null) }
   var successMessage by remember { mutableStateOf<String?>(null) }
+
+  androidx.compose.runtime.LaunchedEffect(savedGroups) {
+    if (selectedGroupId == null && savedGroups.isNotEmpty()) {
+      val first = savedGroups.first()
+      selectedGroupId = first.id
+      val rawDigits = first.treasurerPhone.filter { it.isDigit() }
+      val display = if (rawDigits.startsWith("233") && rawDigits.length > 3) rawDigits.substring(3) else rawDigits
+      if (phoneNumber.isBlank()) {
+        phoneNumber = display
+      }
+    }
+  }
 
   // Forgot PIN Reset Dialog State
   var showResetDialog by remember { mutableStateOf(false) }
@@ -164,6 +180,90 @@ fun AuthOtpScreen(
         ),
         modifier = Modifier.padding(top = 4.dp, bottom = 20.dp)
       )
+
+      // SAVED GROUPS ON THIS DEVICE (Multi-Account / Multi-Group Switcher)
+      if (savedGroups.isNotEmpty()) {
+        Text(
+          text = "SAVED LEDGERS ON THIS DEVICE",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.8.sp,
+            color = TextSecondary
+          ),
+          modifier = Modifier.align(Alignment.Start)
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Column(
+          modifier = Modifier.fillMaxWidth(),
+          verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          savedGroups.forEach { groupItem ->
+            val isSelected = selectedGroupId == groupItem.id
+            Surface(
+              modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                  selectedGroupId = groupItem.id
+                  val rawDigits = groupItem.treasurerPhone.filter { it.isDigit() }
+                  val display = if (rawDigits.startsWith("233") && rawDigits.length > 3) rawDigits.substring(3) else rawDigits
+                  phoneNumber = display
+                  errorMessage = null
+                  onSelectSavedGroup(groupItem)
+                },
+              shape = RoundedCornerShape(10.dp),
+              color = if (isSelected) ForestGreenLightFill else NeutralSurfaceLight,
+              border = BorderStroke(1.5.dp, if (isSelected) ForestGreenPrimary else InputBorderUnfocused)
+            ) {
+              Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Box(
+                  modifier = Modifier
+                    .size(36.dp)
+                    .background(if (isSelected) ForestGreenPrimary else BorderGrey, CircleShape),
+                  contentAlignment = Alignment.Center
+                ) {
+                  Icon(
+                    imageVector = if (isSelected) Icons.Default.CheckCircle else Icons.Default.Shield,
+                    contentDescription = null,
+                    tint = PureWhite,
+                    modifier = Modifier.size(18.dp)
+                  )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                  Text(
+                    text = groupItem.name,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = TextPrimary
+                  )
+                  Text(
+                    text = "GHS ${String.format(java.util.Locale.US, "%.2f", groupItem.amount)} • ${groupItem.schedule.replaceFirstChar { it.uppercase() }}",
+                    fontSize = 12.sp,
+                    color = TextSecondary
+                  )
+                  if (groupItem.treasurerName.isNotBlank() || groupItem.treasurerPhone.isNotBlank()) {
+                    Text(
+                      text = "Officer: ${groupItem.treasurerName.ifBlank { "Treasurer" }} • ${groupItem.treasurerPhone}",
+                      fontSize = 11.sp,
+                      color = if (isSelected) ForestGreenPrimary else TextSecondary,
+                      fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
+      }
 
       // Role Selection: Lead Treasurer vs Second Officer
       Text(
@@ -396,7 +496,7 @@ fun AuthOtpScreen(
 
           val fullPhone = if (phoneNumber.startsWith("+")) phoneNumber else "+233 $phoneNumber"
 
-          onAuthenticate(fullPhone, pinValue, selectedRole) { success, err ->
+          onAuthenticate(fullPhone, pinValue, selectedRole, selectedGroupId) { success, err ->
             isAuthenticating = false
             if (!success) {
               errorMessage = err ?: "Authentication failed. Incorrect phone or PIN."
@@ -472,7 +572,7 @@ fun AuthOtpScreen(
             )
             when (result) {
               is BiometricAuthResult.Success -> {
-                onBiometricAuthenticated { success, error ->
+                onBiometricAuthenticated(selectedGroupId) { success, error ->
                   if (!success) errorMessage = error ?: "Unable to unlock this officer account."
                 }
               }

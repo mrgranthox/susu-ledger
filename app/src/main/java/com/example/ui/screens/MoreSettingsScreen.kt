@@ -134,7 +134,8 @@ fun MoreSettingsScreen(
   onSignOut: () -> Unit = {},
   onDeleteAccount: () -> Unit = {},
   onLockApp: () -> Unit = {},
-  onBackClick: (() -> Unit)? = null
+  onBackClick: (() -> Unit)? = null,
+  auditLogEntities: List<com.example.data.local.AuditLogEntity> = emptyList()
 ) {
   val context = LocalContext.current
   var activeSection by remember { mutableStateOf<String>("settings") } // "settings" or "activity_log"
@@ -168,8 +169,57 @@ fun MoreSettingsScreen(
   var selectedAuditFilter by remember { mutableStateOf(AuditFilter.ALL) }
   var showAllAuditLogsModal by remember { mutableStateOf(false) }
 
-  val auditLogs = remember {
-    emptyList<AuditLogEntry>()
+  val timeFormatter = remember { java.text.SimpleDateFormat("dd MMM, h:mm a", java.util.Locale.getDefault()) }
+
+  val auditLogs = remember(auditLogEntities) {
+    auditLogEntities.map { entity ->
+      val (category, icon, defaultDesc) = when (entity.action) {
+        "PIN_UPDATED" -> Triple(AuditFilter.PIN_EVENTS, Icons.Default.Key, "Officer security PIN changed")
+        "PIN_RESET" -> Triple(AuditFilter.PIN_EVENTS, Icons.Default.Key, "Officer security PIN reset")
+        "PIN_FAILED" -> Triple(AuditFilter.PIN_EVENTS, Icons.Default.Warning, "Failed security PIN attempt")
+        "PIN_AUTHENTICATED" -> Triple(AuditFilter.PIN_EVENTS, Icons.Default.Security, "Officer authenticated with PIN")
+        "BIOMETRIC_TOGGLED" -> {
+          val isEn = entity.payload?.contains("true") == true
+          Triple(AuditFilter.PIN_EVENTS, Icons.Default.Fingerprint, if (isEn) "Biometric unlock enabled" else "Biometric unlock disabled")
+        }
+        "CYCLE_CLOSED" -> Triple(AuditFilter.CYCLE_CLOSES, Icons.Default.Check, "Weekly cycle closed & next cycle opened")
+        "WEEK_OPENED" -> Triple(AuditFilter.CYCLE_CLOSES, Icons.Default.Check, "New weekly cycle opened")
+        "PAYMENT_REVERSED" -> Triple(AuditFilter.REVERSALS, Icons.Default.History, "Payment reversed by officer")
+        "CORRECTION" -> Triple(AuditFilter.REVERSALS, Icons.Default.History, "Ledger correction recorded")
+        "GROUP_RENAMED" -> {
+          val nameDesc = try {
+            val idx = entity.payload?.indexOf("\"newName\":\"") ?: -1
+            if (idx != -1) {
+              val end = entity.payload?.indexOf("\"", idx + 11) ?: -1
+              if (end != -1) "Group renamed to '${entity.payload?.substring(idx + 11, end)}'" else "Group renamed"
+            } else "Group renamed"
+          } catch (e: Exception) { "Group renamed" }
+          Triple(AuditFilter.ALL, Icons.Default.Group, nameDesc)
+        }
+        "GROUP_PAUSED" -> Triple(AuditFilter.ALL, Icons.Default.Warning, "Group collections paused")
+        "GROUP_RESUMED" -> Triple(AuditFilter.ALL, Icons.Default.Refresh, "Group collections resumed")
+        "DUES_AMOUNT_UPDATED" -> Triple(AuditFilter.ALL, Icons.Default.Payment, "Weekly dues amount updated")
+        else -> Triple(
+          AuditFilter.ALL,
+          Icons.Default.Security,
+          entity.action.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }
+        )
+      }
+
+      val formattedTime = try {
+        timeFormatter.format(java.util.Date(entity.createdAt))
+      } catch (e: Exception) {
+        "Recent"
+      }
+
+      AuditLogEntry(
+        icon = icon,
+        description = defaultDesc,
+        timestamp = formattedTime,
+        actorName = if (!entity.actorId.isNullOrBlank()) "Officer" else "System",
+        category = category
+      )
+    }
   }
 
   val filteredAuditLogs = remember(selectedAuditFilter, auditLogs) {
