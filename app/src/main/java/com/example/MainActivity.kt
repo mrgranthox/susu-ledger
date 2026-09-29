@@ -50,6 +50,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -65,6 +66,7 @@ import com.example.ui.SusuViewModel
 import com.example.ui.SavedGroupItem
 import com.example.ui.components.AddMemberDialog
 import com.example.ui.components.BiometricAuthDialog
+import com.example.ui.components.SusuSnackbarHost
 import com.example.ui.screens.AppLockScreen
 import com.example.ui.screens.AppPairingSheet
 import com.example.ui.screens.AuthOtpScreen
@@ -447,14 +449,7 @@ class MainActivity : FragmentActivity() {
                 Scaffold(
                   containerColor = PureWhite,
                   snackbarHost = {
-                    SnackbarHost(snackbarHostState) { data ->
-                      Snackbar(
-                        snackbarData = data,
-                        containerColor = MaterialTheme.colorScheme.inverseSurface,
-                        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-                        shape = RoundedCornerShape(10.dp)
-                      )
-                    }
+                    SusuSnackbarHost(snackbarHostState)
                   },
                   bottomBar = {
                     Surface(
@@ -659,6 +654,7 @@ class MainActivity : FragmentActivity() {
                           viewModel.deleteAccount()
                           showSplashScreen = true
                           showWalkthroughScreen = false
+                          showLoginScreen = false
                         },
                         onLockApp = {
                           viewModel.lockApp()
@@ -777,6 +773,18 @@ class MainActivity : FragmentActivity() {
                   onApproved()
                 }
               )
+            }
+
+            // For screens outside the main Scaffold (onboarding, login, splash, subscreens, app lock)
+            if (!isAuthenticated || isAppLocked || currentSubscreen.isNotBlank()) {
+              Box(
+                modifier = Modifier
+                  .fillMaxSize()
+                  .padding(bottom = 16.dp),
+                contentAlignment = Alignment.BottomCenter
+              ) {
+                SusuSnackbarHost(hostState = snackbarHostState)
+              }
             }
           }
         }

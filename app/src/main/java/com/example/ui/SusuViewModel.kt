@@ -24,6 +24,8 @@ import com.example.util.CryptoUtils
 import com.example.util.DeviceContact
 import com.example.util.GhanaPhoneUtils
 import com.example.util.SessionManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
@@ -1326,15 +1328,43 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     }
   }
 
-  fun deleteAccount() {
+  fun deleteAccount(onComplete: (() -> Unit)? = null) {
     viewModelScope.launch {
-      database.clearAllTables()
-      sessionManager.fullReset()
-      _isAuthenticated.value = false
-      _isOnboardingCompleted.value = false
-      _isAppLocked.value = false
-      _selectedGroupId.value = ""
-      _toastMessage.value = "Account and local ledger data deleted"
+      try {
+        withContext(Dispatchers.IO) {
+          repository.purgeAllAccountData()
+          database.clearAllTables()
+          sessionManager.fullReset()
+          runCatching {
+            com.google.firebase.auth.FirebaseAuth.getInstance().signOut()
+          }
+        }
+        _isAuthenticated.value = false
+        _isOnboardingCompleted.value = false
+        _isAppLocked.value = false
+        _selectedGroupId.value = ""
+        _userPhone.value = ""
+        _userRole.value = "treasurer"
+        _currentNavIndex.value = 0
+        _currentSubscreen.value = ""
+        _pairingCode.value = ""
+        _isBotConnected.value = false
+        _botConnectionError.value = null
+        _verificationReport.value = null
+        _deviceContacts.value = emptyList()
+        _selectedClaimForConfirmation.value = null
+        _selectedMemberForPayment.value = null
+        _showPaymentSheet.value = false
+        _showNewWeekDialog.value = false
+        _showAddMemberDialog.value = false
+        _showReportsSheet.value = false
+        _showPairingSheet.value = false
+        _toastMessage.value = "Account and local ledger data deleted"
+        onComplete?.invoke()
+      } catch (e: Exception) {
+        e.printStackTrace()
+        _toastMessage.value = "Failed to delete account: ${e.localizedMessage}"
+      }
     }
   }
 }

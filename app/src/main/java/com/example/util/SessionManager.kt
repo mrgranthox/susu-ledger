@@ -178,6 +178,6 @@ class SessionManager(context: Context) {
   }
 
   fun fullReset() {
-    prefs.edit().clear().apply()
+    prefs.edit().clear().commit()
   }
 }

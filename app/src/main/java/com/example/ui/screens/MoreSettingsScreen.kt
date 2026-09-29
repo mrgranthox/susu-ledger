@@ -627,7 +627,14 @@ fun MoreSettingsScreen(
                 .fillMaxWidth()
                 .testTag("settings_delete_account_btn")
             ) {
-              Text("Delete Account & Clear Local Data", color = TextSecondary, fontSize = 11.sp)
+              Icon(
+                imageVector = Icons.Default.DeleteForever,
+                contentDescription = null,
+                tint = DangerRed.copy(alpha = 0.85f),
+                modifier = Modifier.size(16.dp)
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              Text("Delete Account & Clear Local Data", color = DangerRed.copy(alpha = 0.85f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
             }
           }
         }
@@ -1593,7 +1600,11 @@ fun MoreSettingsScreen(
     AlertDialog(
       onDismissRequest = { showDeleteAccountDialog = false },
       title = {
-        Text("Delete Account & Purge Data?", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = ErrorRed))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(Icons.Default.DeleteForever, contentDescription = null, tint = ErrorRed, modifier = Modifier.size(24.dp))
+          Spacer(modifier = Modifier.width(8.dp))
+          Text("Delete Account & Purge Data?", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = ErrorRed))
+        }
       },
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -34,6 +34,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import com.example.ui.components.SusuSnackbarHost
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -128,7 +129,7 @@ fun CycleDetailScreen(
 
   Scaffold(
     containerColor = PureWhite,
-    snackbarHost = { SnackbarHost(snackbarHostState) },
+    snackbarHost = { SusuSnackbarHost(snackbarHostState) },
     topBar = {
       StandardNavTopBar(
         title = "Week $cycleNumber — Due $dueDate",

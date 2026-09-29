@@ -134,4 +134,50 @@ class ExampleRobolectricTest {
       org.junit.Assert.assertFalse(tamperedReport.isChainValid)
     }
   }
+
+  @Test
+  fun `verify clearAllTables and deleteAccount`() = kotlinx.coroutines.runBlocking {
+    val context = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val vm = com.example.ui.SusuViewModel(context)
+    val db = com.example.data.local.SusuDatabase.getDatabase(context, this)
+    com.example.data.local.SusuDatabase.populateInitialData(db.susuDao())
+    assertEquals(2, db.susuDao().getAllGroupsOnce().size)
+    assertEquals(4, db.susuDao().getAllIdentitiesOnce().size)
+    assertEquals(1, db.susuDao().getAllPaymentsOnce().size)
+    
+    // Set some state to verify complete reset
+    vm.sessionManager.saveSession("+233240000000", "treasurer", "Kwame", "group-nima-001")
+    vm.setNavIndex(3)
+    vm.openSubscreen("whatsapp_bot")
+    
+    var deleteCallbackCalled = false
+    vm.deleteAccount {
+      deleteCallbackCalled = true
+    }
+    kotlinx.coroutines.delay(600)
+    org.robolectric.shadows.ShadowLooper.idleMainLooper()
+    
+    // Verify database tables are completely wiped
+    assertEquals(0, db.susuDao().getAllGroupsOnce().size)
+    assertEquals(0, db.susuDao().getAllIdentitiesOnce().size)
+    assertEquals(0, db.susuDao().getAllPaymentsOnce().size)
+    assertEquals(0, db.susuDao().getAllLedgerEntriesOnce().size)
+    assertEquals(0, db.susuDao().getMembersForGroupOnce("group-nima-001").size)
+    
+    // Verify ViewModel state is cleanly reset
+    org.junit.Assert.assertFalse(vm.isAuthenticated.value)
+    org.junit.Assert.assertFalse(vm.isOnboardingCompleted.value)
+    org.junit.Assert.assertFalse(vm.isAppLocked.value)
+    assertEquals("", vm.selectedGroupId.value)
+    assertEquals("", vm.userPhone.value)
+    assertEquals(0, vm.currentNavIndex.value)
+    assertEquals("", vm.currentSubscreen.value)
+    org.junit.Assert.assertTrue(deleteCallbackCalled)
+    
+    // Verify SessionManager preferences are completely wiped
+    org.junit.Assert.assertFalse(vm.sessionManager.isOnboarded)
+    assertEquals("", vm.sessionManager.loggedInPhone)
+    assertEquals("", vm.sessionManager.activeGroupId)
+    assertEquals(0, vm.sessionManager.lastNavIndex)
+  }
 }
