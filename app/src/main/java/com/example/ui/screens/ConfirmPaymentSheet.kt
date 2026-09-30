@@ -423,6 +423,27 @@ fun ConfirmPaymentSheet(
         }
       }
 
+      if (selectedMethod == "MOMO") {
+        Spacer(modifier = Modifier.height(14.dp))
+        OutlinedTextField(
+          value = momoRef,
+          onValueChange = { momoRef = it.trim() },
+          label = { Text("MoMo Transaction Reference / SMS ID") },
+          placeholder = { Text("e.g. MP260930.1234.A00123") },
+          modifier = Modifier
+            .fillMaxWidth()
+            .testTag("momo_reference_input"),
+          singleLine = true,
+          colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = ForestGreenPrimary,
+            unfocusedBorderColor = InputBorderUnfocused,
+            focusedContainerColor = PureWhite,
+            unfocusedContainerColor = PureWhite
+          ),
+          shape = RoundedCornerShape(8.dp)
+        )
+      }
+
       Spacer(modifier = Modifier.height(20.dp))
 
       // Toggle row with simple green toggle: "Send receipt to Kofi on WhatsApp" (ON)

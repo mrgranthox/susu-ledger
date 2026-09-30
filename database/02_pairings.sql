@@ -7,11 +7,13 @@ CREATE TABLE IF NOT EXISTS bot_pairings (
     paired_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_bot_pairings_expiry ON bot_pairings(expires_at);
+CREATE INDEX IF NOT EXISTS idx_bot_pairings_status_group ON bot_pairings(status, group_id);
 
 CREATE TABLE IF NOT EXISTS webhook_events (
     id TEXT PRIMARY KEY,
     processed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX IF NOT EXISTS idx_webhook_events_processed_at ON webhook_events(processed_at);
 
 CREATE TABLE IF NOT EXISTS payment_receipts (
     payment_id UUID PRIMARY KEY REFERENCES payments(id) ON DELETE CASCADE,

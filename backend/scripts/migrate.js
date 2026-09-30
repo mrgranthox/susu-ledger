@@ -15,6 +15,8 @@ const db = require('../src/config/database');
     await client.query(fs.readFileSync(path.resolve(__dirname,'../../database/03_message_log_phone.sql'),'utf8'));
     await client.query(fs.readFileSync(path.resolve(__dirname,'../../database/04_bot_sessions.sql'),'utf8'));
     await client.query(fs.readFileSync(path.resolve(__dirname,'../../database/05_week_notifications.sql'),'utf8'));
+    await client.query(fs.readFileSync(path.resolve(__dirname,'../../database/06_indexes.sql'),'utf8'));
+    await client.query(fs.readFileSync(path.resolve(__dirname,'../../database/07_fcm_token.sql'),'utf8'));
     await client.query('COMMIT');
     console.log('Database schema is ready');
   } catch (error) {

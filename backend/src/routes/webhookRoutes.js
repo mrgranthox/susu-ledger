@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const db = require('../config/database');
 const { signatureMiddleware } = require('../middleware/webhookSignature');
-const { handleIncomingWhatsAppMessage } = require('../services/stateMachine');
+const { handleIncomingWhatsAppMessage, handleMediaMessage } = require('../services/stateMachine');
 const { handlePaystackWebhook } = require('../services/paystackService');
 
 router.get('/whatsapp', (req, res) => {
@@ -29,6 +29,8 @@ router.post('/whatsapp', signatureMiddleware({secretName:'META_APP_SECRET',heade
               const reply=message.interactive?.button_reply || message.interactive?.list_reply;
               if (message.type === 'text' || reply) {
                 await handleIncomingWhatsAppMessage(message.from,message.text?.body || reply?.title || '',reply?.id);
+              } else if (['image', 'document', 'audio', 'video'].includes(message.type)) {
+                await handleMediaMessage(message.from, message.type, message[message.type]?.id);
               }
               await client.query('INSERT INTO webhook_events(id) VALUES($1)',[message.id]);
             }

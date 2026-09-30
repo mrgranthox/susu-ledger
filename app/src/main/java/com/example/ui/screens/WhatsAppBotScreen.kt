@@ -111,6 +111,7 @@ fun WhatsAppBotScreen(
   pairingCode: String = "",
   pairingSecondsRemaining: Int = 0,
   isBotConnected: Boolean = false,
+  hasActiveCycle: Boolean = true,
   connectionError: String? = null,
   cloudStatus: CloudSystemStatusResponse? = null,
   onBack: () -> Unit,
@@ -323,6 +324,46 @@ fun WhatsAppBotScreen(
                 }
               }
 
+              // Cloud Infrastructure Diagnostics Row
+              if (cloudStatus != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  horizontalArrangement = Arrangement.SpaceBetween,
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Text(
+                    text = "CLOUD ENGINE STATUS",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp,
+                    color = TextSecondary
+                  )
+                  TextButton(
+                    onClick = onCheckCloudStatus,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                    modifier = Modifier.height(22.dp)
+                  ) {
+                    Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh", tint = ForestGreenPrimary, modifier = Modifier.size(12.dp))
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Text("Refresh", fontSize = 10.sp, color = ForestGreenPrimary, fontWeight = FontWeight.Bold)
+                  }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                  val isDbOk = cloudStatus.database?.status == "healthy"
+                  val isWaOk = cloudStatus.whatsappBot?.phoneIdConfigured == true
+                  val isCacheOk = cloudStatus.cache?.ping == "PONG"
+
+                  StatusIndicatorPill(label = "Database", isHealthy = isDbOk, modifier = Modifier.weight(1f))
+                  StatusIndicatorPill(label = "WhatsApp API", isHealthy = isWaOk, modifier = Modifier.weight(1f))
+                  StatusIndicatorPill(label = "Redis Cache", isHealthy = isCacheOk, modifier = Modifier.weight(1f))
+                }
+              }
+
               Spacer(modifier = Modifier.height(8.dp))
 
               // Outbound Broadcast Actions (LazyRow for zero horizontal clipping)
@@ -344,6 +385,7 @@ fun WhatsAppBotScreen(
                   OutboundTriggerChip(
                     title = "Friday Reminder",
                     icon = Icons.Default.NotificationsActive,
+                    enabled = hasActiveCycle && isBotConnected,
                     onClick = onSendWeeklyReminder
                   )
                 }
@@ -351,6 +393,7 @@ fun WhatsAppBotScreen(
                   OutboundTriggerChip(
                     title = "Nudge Unpaid",
                     icon = Icons.Default.Campaign,
+                    enabled = hasActiveCycle && isBotConnected,
                     onClick = onSendUnpaidNudges
                   )
                 }
@@ -358,6 +401,7 @@ fun WhatsAppBotScreen(
                   OutboundTriggerChip(
                     title = "Sunday Digest",
                     icon = Icons.Default.Receipt,
+                    enabled = hasActiveCycle && isBotConnected,
                     onClick = onSendSundayDigest
                   )
                 }
@@ -566,27 +610,65 @@ fun WhatsAppBotScreen(
 private fun OutboundTriggerChip(
   title: String,
   icon: androidx.compose.ui.graphics.vector.ImageVector,
+  enabled: Boolean = true,
   modifier: Modifier = Modifier,
   onClick: () -> Unit
 ) {
+  val surfaceColor = if (enabled) ForestGreenLightFill else NeutralSurfaceMedium.copy(alpha = 0.6f)
+  val contentColor = if (enabled) ForestGreenPrimary else TextSecondary
   Surface(
     shape = RoundedCornerShape(8.dp),
-    color = ForestGreenLightFill,
-    border = BorderStroke(1.dp, ForestGreenPrimary.copy(alpha = 0.2f)),
-    modifier = modifier.clickable(onClick = onClick)
+    color = surfaceColor,
+    border = BorderStroke(1.dp, contentColor.copy(alpha = if (enabled) 0.25f else 0.15f)),
+    modifier = modifier.clickable(enabled = enabled, onClick = onClick)
   ) {
     Row(
       modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.Center
     ) {
-      Icon(icon, contentDescription = null, tint = ForestGreenPrimary, modifier = Modifier.size(13.dp))
+      Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(13.dp))
       Spacer(modifier = Modifier.width(4.dp))
       Text(
         text = title,
         fontSize = 12.sp,
         fontWeight = FontWeight.Bold,
-        color = ForestGreenPrimary
+        color = contentColor
+      )
+    }
+  }
+}
+
+@Composable
+private fun StatusIndicatorPill(
+  label: String,
+  isHealthy: Boolean,
+  modifier: Modifier = Modifier
+) {
+  val activeColor = if (isHealthy) ForestGreenPrimary else Color(0xFFD32F2F)
+  Surface(
+    shape = RoundedCornerShape(6.dp),
+    color = if (isHealthy) ForestGreenLightFill else Color(0xFFFFEBEE),
+    border = BorderStroke(1.dp, activeColor.copy(alpha = 0.3f)),
+    modifier = modifier
+  ) {
+    Row(
+      modifier = Modifier.padding(vertical = 4.dp, horizontal = 6.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.Center
+    ) {
+      Box(
+        modifier = Modifier
+          .size(6.dp)
+          .clip(CircleShape)
+          .background(activeColor)
+      )
+      Spacer(modifier = Modifier.width(4.dp))
+      Text(
+        text = label,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = activeColor
       )
     }
   }

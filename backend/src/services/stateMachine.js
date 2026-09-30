@@ -1,5 +1,6 @@
 const db = require('../config/database');
 const { consumePairing } = require('./pairingService');
+const { pushToTreasurer } = require('./fcmService');
 const whatsapp = require('./whatsappService');
 const sendWhatsAppInteractiveMessage = (...args) => whatsapp.sendWhatsAppInteractiveMessage(...args);
 const sendWhatsAppTextMessage = (...args) => whatsapp.sendWhatsAppTextMessage(...args);
@@ -165,7 +166,13 @@ async function broadcastWelcomeToGroupMembers(groupId) {
       `SELECT m.id AS member_id, m.alias, i.id AS identity_id, i.phone, i.display_name
        FROM members m
        JOIN identities i ON i.id = m.identity_id
-       WHERE m.group_id = $1 AND m.state = 'active'`,
+       WHERE m.group_id = $1 AND m.state = 'active'
+         AND NOT EXISTS (
+           SELECT 1 FROM message_log l
+           WHERE l.identity_id = i.id AND l.direction = 'OUT'
+             AND l.body LIKE '%Welcome to%'
+             AND l.created_at > clock_timestamp() - interval '24 hours'
+         )`,
       [groupId]
     );
 
@@ -332,6 +339,16 @@ async function notifyTreasurer(membership, amount, evidenceMoMoId, identityId) {
     `MEMBER CLAIM ALERT\n\n${memberName} claims GHS ${Number(amount).toFixed(2)} for ${membership.group_name} (Week ${membership.cycle_number || 1}).\nReference: ${evidenceMoMoId || 'Not provided'}\n\nOpen SusuLedger to confirm or reject the claim.`,
     identityId
   );
+
+  try {
+    await pushToTreasurer(membership.treasurer_id, {
+      title: `New Claim — ${membership.group_name}`,
+      body: `${memberName} claims GHS ${Number(amount).toFixed(2)} for Week ${membership.cycle_number || 1}`,
+      data: { type: 'CLAIM_SUBMITTED', groupId: membership.group_id },
+    });
+  } catch (pushErr) {
+    console.warn('[Treasurer FCM Push Error]', pushErr.message);
+  }
 }
 
 async function recordPaymentClaim(fromPhone, identity, membership, amount, evidenceMoMoId) {
@@ -727,8 +744,44 @@ async function handleIncomingWhatsAppMessage(fromPhone, messageBody, buttonPaylo
   );
 }
 
+async function handleMediaMessage(fromPhone, mediaType, mediaId) {
+  const { cleanPhone, formattedPhone } = normalizePhone(fromPhone);
+  const identity = await resolveIdentity(fromPhone, formattedPhone);
+  const session = await getBotSession(identity.id);
+
+  await logMessage({
+    identityId: identity.id,
+    phone: formattedPhone || cleanPhone || fromPhone,
+    direction: 'IN',
+    body: `[${(mediaType || 'MEDIA').toUpperCase()}: ${mediaId || 'received'}]`,
+    metaStatus: 'received',
+  });
+
+  if (session?.current_state === 'WAITING_CLAIM_AMOUNT' || session?.current_state === 'WAITING_CUSTOM_AMOUNT') {
+    const ctxData = session.context_data || {};
+    await saveBotSession(identity.id, {
+      ...session,
+      currentState: session.current_state,
+      selectedGroupId: session.selected_group_id,
+      contextData: { ...ctxData, evidenceMediaId: mediaId },
+    });
+    await sendWhatsAppTextMessage(
+      fromPhone,
+      `📎 Received your ${mediaType}! Your attachment has been recorded as payment evidence.\n\nPlease reply *PAID* or send the amount (e.g. *GHS 50*) to complete your claim, or add your MoMo reference: *MOMO:MP12345*`,
+      identity.id
+    );
+  } else {
+    await sendWhatsAppTextMessage(
+      fromPhone,
+      `Thanks for sending this ${mediaType}! If you are submitting a payment claim, please reply *PAID* with your contribution details or MoMo reference.\n\nReply *MENU* for all commands.`,
+      identity.id
+    );
+  }
+}
+
 module.exports = {
   handleIncomingWhatsAppMessage,
+  handleMediaMessage,
   broadcastWelcomeToGroupMembers,
   getActiveMemberships,
   parseAmount,

@@ -131,7 +131,7 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
     pairingOwner = owner
     pairingCompleted = false
     val session = sessionManager.pairingForConnection(phoneNum, groupId, forceNew)
-    val newCode = session.code
+    var newCode = session.code
     _pairingCode.value = newCode
     pairingDeadline = session.expiresAt
     _pairingSecondsRemaining.value = session.secondsRemaining()
@@ -152,14 +152,33 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (existing.code() == 404) {
           repository.syncAllOfflineDataToCloud(groupId)
-          val response = api.registerPairingCode(
-            PairBotRequest(
-              code = newCode,
-              phone = phoneNum,
-              groupId = groupId
+          var currentCode = newCode
+          var registered = false
+          for (attempt in 1..3) {
+            val response = api.registerPairingCode(
+              PairBotRequest(
+                code = currentCode,
+                phone = phoneNum,
+                groupId = groupId
+              )
             )
-          )
-          if (!response.isSuccessful) error("Pairing registration failed (HTTP ${response.code()})")
+            if (response.isSuccessful) {
+              registered = true
+              newCode = currentCode
+              break
+            }
+            val errBody = response.errorBody()?.string().orEmpty()
+            if (response.code() == 400 && errBody.contains("Generate a new pairing code", ignoreCase = true)) {
+              val freshSession = sessionManager.pairingForConnection(phoneNum, groupId, forceNew = true)
+              currentCode = freshSession.code
+              _pairingCode.value = currentCode
+              pairingDeadline = freshSession.expiresAt
+              _pairingSecondsRemaining.value = freshSession.secondsRemaining()
+            } else {
+              error("Pairing registration failed (HTTP ${response.code()})")
+            }
+          }
+          if (!registered) error("Unable to register pairing code after retries.")
         } else if (existing.body()?.status != "PENDING_WHATSAPP_CONFIRMATION") {
           error("This pairing code is no longer active. Generate a new code.")
         }
@@ -1100,7 +1119,26 @@ class SusuViewModel(application: Application) : AndroidViewModel(application) {
   }
 
   fun sendTargetedUnpaidNudges() {
-    sendWeeklyCollectionReminder()
+    viewModelScope.launch {
+      try {
+        repository.syncAllOfflineDataToCloud()
+        val response = SusuApiClient.getApiService().triggerUnpaidNudges()
+        check(response.isSuccessful) { "Nudge dispatch failed (HTTP ${response.code()})" }
+        val count = response.body()?.sentCount ?: 0
+        _toastMessage.value = if (count > 0) "WhatsApp delivered $count payment nudges" else "All active members are up to date!"
+      } catch (e: Exception) {
+        _toastMessage.value = e.localizedMessage
+      }
+    }
+  }
+
+  fun uploadFcmToken(token: String) {
+    if (token.isBlank()) return
+    viewModelScope.launch {
+      try {
+        SusuApiClient.getApiService().registerFcmToken(mapOf("token" to token))
+      } catch (_: Exception) {}
+    }
   }
 
   fun sendSundaySummaryDigest() {

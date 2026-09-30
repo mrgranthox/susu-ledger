@@ -63,6 +63,18 @@ router.get('/account/backup', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+router.post('/fcm-token', async (req, res, next) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ error: 'FCM token required' });
+    await db.query(
+      'UPDATE identities SET fcm_token = $1 WHERE phone = $2',
+      [token, normalizePhone(req.auth.phone_number)]
+    );
+    res.json({ success: true });
+  } catch (error) { next(error); }
+});
+
 router.use(async (req, res, next) => {
   try {
     let groupId = req.path.match(/^\/groups\/([^/]+)/)?.[1] || req.body.groupId;

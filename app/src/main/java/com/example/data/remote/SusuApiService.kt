@@ -53,6 +53,12 @@ interface SusuApiService {
   @GET("api/cron/reminders/weekly")
   suspend fun triggerFridayReminder(): Response<CronDispatchResponse>
 
+  @POST("api/cron/nudges/unpaid")
+  suspend fun triggerUnpaidNudges(): Response<CronDispatchResponse>
+
   @GET("api/cron/summaries/weekly")
   suspend fun triggerSundayDigest(): Response<CronDispatchResponse>
+
+  @POST("api/app/fcm-token")
+  suspend fun registerFcmToken(@Body request: Map<String, String>): Response<Map<String, Any>>
 }

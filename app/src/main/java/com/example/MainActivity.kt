@@ -422,6 +422,7 @@ class MainActivity : FragmentActivity() {
                   pairingSecondsRemaining = pairingSecondsRemaining,
                   cloudStatus = cloudStatus,
                   isBotConnected = isBotConnected,
+                  hasActiveCycle = (activeCycle != null),
                   connectionError = botConnectionError,
                   onBack = { viewModel.closeSubscreen() },
                   onSendMessage = { phone, msg -> viewModel.sendLiveWhatsAppMessage(phone, msg) },

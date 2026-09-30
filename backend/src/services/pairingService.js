@@ -6,7 +6,10 @@ async function registerPairing(code, groupId, verifiedPhone) {
   const id = cloudId(groupId);
   const owner = await db.query('SELECT g.id FROM groups g JOIN identities i ON i.id=g.treasurer_id WHERE g.id=$1 AND i.phone=$2', [id,phone(verifiedPhone)]);
   if (!owner.rows.length) throw Object.assign(new Error('Sync your group before pairing'), { status: 403 });
-  await db.query('INSERT INTO bot_pairings(code,phone,group_id) VALUES($1,$2,$3)', [code,phone(verifiedPhone),id]);
+  await db.query(
+    "INSERT INTO bot_pairings(code,phone,group_id,status) VALUES($1,$2,$3,'PENDING_WHATSAPP_CONFIRMATION')",
+    [code,phone(verifiedPhone),id]
+  );
 }
 
 async function consumePairing(code, senderPhone) {

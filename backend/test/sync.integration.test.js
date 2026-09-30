@@ -13,6 +13,8 @@ before(async () => {
   await db.query(readFileSync('../database/01_schema.sql', 'utf8'));
   await db.query(readFileSync('../database/02_pairings.sql', 'utf8'));
   await db.query(readFileSync('../database/05_week_notifications.sql', 'utf8'));
+  await db.query(readFileSync('../database/06_indexes.sql', 'utf8'));
+  await db.query(readFileSync('../database/07_fcm_token.sql', 'utf8'));
 });
 after(() => db.pool.end());
 
@@ -318,4 +320,44 @@ test('multi-group memberships resolve both member and treasurer roles for single
     textMock.mock.restore();
   }
 });
+
+test('media message logs attachment and sends helpful response', async () => {
+  const { handleMediaMessage } = require('../src/services/stateMachine');
+  const whatsapp = require('../src/services/whatsappService');
+  const sentMessages = [];
+  const textMock = mock.method(whatsapp, 'sendWhatsAppTextMessage', async (phone, text) => {
+    sentMessages.push({ phone, text });
+    return { success: true };
+  });
+
+  try {
+    const memberPhone = '+233249990001';
+    await handleMediaMessage(memberPhone, 'image', 'meta-media-img-123');
+    assert.equal(sentMessages.length, 1);
+    assert.match(sentMessages[0].text, /image/i);
+
+    const logRes = await db.query(
+      "SELECT body FROM message_log WHERE phone = $1 AND body LIKE '%meta-media-img-123%'",
+      [memberPhone]
+    );
+    assert.equal(logRes.rowCount, 1);
+  } finally {
+    textMock.mock.restore();
+  }
+});
+
+test('maintenance prune removes webhook_events older than 7 days', async () => {
+  await db.query("INSERT INTO webhook_events(id, processed_at) VALUES('old-event-1', NOW() - INTERVAL '10 days') ON CONFLICT DO NOTHING");
+  await db.query("INSERT INTO webhook_events(id, processed_at) VALUES('new-event-1', NOW()) ON CONFLICT DO NOTHING");
+
+  const deleteRes = await db.query("DELETE FROM webhook_events WHERE processed_at < NOW() - INTERVAL '7 days'");
+  assert.ok(deleteRes.rowCount >= 1);
+
+  const checkOld = await db.query("SELECT id FROM webhook_events WHERE id = 'old-event-1'");
+  assert.equal(checkOld.rowCount, 0);
+
+  const checkNew = await db.query("SELECT id FROM webhook_events WHERE id = 'new-event-1'");
+  assert.equal(checkNew.rowCount, 1);
+});
+
 

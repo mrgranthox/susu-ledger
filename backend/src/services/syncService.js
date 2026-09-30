@@ -110,6 +110,7 @@ async function syncGroup(payload, authenticatedPhone) {
       const scope = (await client.query('SELECT c.id FROM cycles c JOIN members m ON m.group_id=c.group_id WHERE c.id=$1 AND m.id=$2 AND c.group_id=$3', [cid,mid,groupId])).rows[0];
       if (!scope) throw new Error('Payment group mismatch');
       const prior = (await client.query('SELECT * FROM payments WHERE idempotency_key=$1 OR id=$2', [payment.idempotencyKey,pid])).rows;
+      let claimUpdate = null;
       if (prior.length) {
         if (prior.length !== 1 || prior[0].id !== pid || prior[0].idempotency_key !== payment.idempotencyKey || prior[0].cycle_id !== cid || prior[0].member_id !== mid || Number(prior[0].amount_paid) !== payment.amountPaid || prior[0].method !== payment.method) throw Object.assign(new Error('Payment retry differs from stored record'), { status: 409 });
       } else {
@@ -125,10 +126,12 @@ async function syncGroup(payload, authenticatedPhone) {
           await client.query('INSERT INTO accounts(id,group_id,name,type,member_id) VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO NOTHING', [accountId,groupId,type === 'asset' ? 'Cash/MoMo Asset' : 'Member Equity',type,type === 'equity' ? mid : null]);
           await client.query('INSERT INTO ledger_entries(payment_id,account_id,entry_type,amount) VALUES($1,$2,$3,$4)', [pid,accountId,type === 'asset' ? 'debit' : 'credit',payment.amountPaid]);
         }
-        await client.query("UPDATE claims SET state='confirmed',resolved_by=$1,resolved_at=clock_timestamp() WHERE cycle_id=$2 AND member_id=$3 AND state='pending'", [identity.id,cid,mid]);
+        claimUpdate = await client.query("UPDATE claims SET state='confirmed',resolved_by=$1,resolved_at=clock_timestamp() WHERE cycle_id=$2 AND member_id=$3 AND state='pending' RETURNING id", [identity.id,cid,mid]);
       }
       acknowledged.push(payment.id);
-      if (receiptPaymentIds.includes(payment.id)) await client.query('INSERT INTO payment_receipts(payment_id) VALUES($1) ON CONFLICT DO NOTHING',[pid]);
+      if (receiptPaymentIds.includes(payment.id) || (claimUpdate && claimUpdate.rowCount > 0)) {
+        await client.query('INSERT INTO payment_receipts(payment_id) VALUES($1) ON CONFLICT DO NOTHING',[pid]);
+      }
     }
     await client.query('COMMIT');
     return { groupId, acknowledgedPaymentIds: acknowledged };
