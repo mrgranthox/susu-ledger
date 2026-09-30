@@ -124,11 +124,16 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error', message: err.message });
 });
 
-if (require.main === module) app.listen(PORT, () => {
-  console.log(`🚀 SusuLedger Backend running on port ${PORT}`);
-  console.log(`👉 Webhook endpoint: /webhooks/whatsapp`);
-  console.log(`👉 App REST API: /api/app/*`);
-  console.log(`👉 Cloud Scheduler: /api/cron/*`);
-});
+const { runMigrations } = require('./config/migrate');
+
+if (require.main === module) {
+  runMigrations().catch(err => console.warn('[Auto-Migrate Notice]', err.message));
+  app.listen(PORT, () => {
+    console.log(`🚀 SusuLedger Backend running on port ${PORT}`);
+    console.log(`👉 Webhook endpoint: /webhooks/whatsapp`);
+    console.log(`👉 App REST API: /api/app/*`);
+    console.log(`👉 Cloud Scheduler: /api/cron/*`);
+  });
+}
 
 module.exports = app;
